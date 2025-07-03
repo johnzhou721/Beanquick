@@ -11,16 +11,21 @@ import logging
 import toga
 
 from beanquick.services.logging import get_logger, setup_logging
+from beanquick.services.state_manager import StateManager
+from beanquick.config import AppConfig
 
 
 logger = get_logger()
 
 class Beanquick(toga.App):
-    def __init__(self, formal_name="Beanquick", app_id="com.twobitsware.beanbot", **kwargs):
+    def __init__(self, formal_name="Beanquick", app_id="com.twobitsware.beanquick", **kwargs):
         """
         Initialize the Beanquick application.
         """
         super().__init__(formal_name, app_id, **kwargs)
+        # Initialize basic app properties
+        self.config: AppConfig = AppConfig(self.paths)
+        self.state_manager = StateManager(self)
 
         # Set up logging
         try:
@@ -35,19 +40,18 @@ class Beanquick(toga.App):
             logger.error(f"Unexpected error during logging setup: {e}", exc_info=True)
             logging.basicConfig(level=logging.INFO)
 
-        logger.info(f"{self.formal_name} starting up...")
-
     def startup(self):
         """Construct and show the Toga application.
-
-        Usually, you would add your application to a main content box.
-        We then create a main window (with a name matching the app), and
-        show the main window.
         """
-        main_box = toga.Box()
+        logger.info(f"{self.formal_name} starting up...")
 
-        self.main_window = toga.MainWindow(title=self.formal_name)
-        self.main_window.content = main_box
+        # TODO: Set size and position based on user settings or CONSTANTS
+        self.main_window = toga.MainWindow(title=self.formal_name, size=(840, 670))
+
+        # Determine initial state and navigate there
+        self.state_manager.initialize_app_state()
+
+        # Show the main window
         self.main_window.show()
 
 
