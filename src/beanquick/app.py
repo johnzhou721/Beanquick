@@ -6,13 +6,20 @@ from __future__ import annotations
 __copyright__ = "Copyright (C) 2025 TwoBitsWare"
 __license__ = "GNU GPLv2"
 
+import asyncio
+import threading
 import logging
+from typing import TYPE_CHECKING
 
 import toga
 
+from beanquick.core import BeanquickLedger
 from beanquick.services.logging import get_logger, setup_logging
 from beanquick.services.state_manager import StateManager
 from beanquick.config import AppConfig
+
+if TYPE_CHECKING:
+    from beanquick.services.ledger_manager import LedgerData
 
 
 logger = get_logger()
@@ -26,6 +33,12 @@ class Beanquick(toga.App):
         # Initialize basic app properties
         self.config: AppConfig = AppConfig(self.paths)
         self.state_manager = StateManager(self)
+
+        # Initialize ledger management
+        self.ledger_management_lock = threading.Lock()
+        self.active_ledger: BeanquickLedger | None = None
+        self.active_ledger_data: LedgerData | None = None
+        self.current_load_task: asyncio.Task | None = None
 
         # Set up logging
         try:

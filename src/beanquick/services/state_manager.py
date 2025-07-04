@@ -1,6 +1,7 @@
 """State management for Beanquick application."""
 from __future__ import annotations
 
+import asyncio
 import logging
 from pathlib import Path
 from abc import ABC, abstractmethod
@@ -9,11 +10,13 @@ from typing import TYPE_CHECKING
 
 import toga
 from toga.style import Pack
-from toga.style.pack import COLUMN, CENTER  # type: ignore
+from toga.style.pack import COLUMN, CENTER, BOLD  # type: ignore
 
+from beanquick.core import BeanquickLedger
 from beanquick.ui.welcome_box import WelcomeBox
 from beanquick.ui.setup_box import SetupBox
 from beanquick.ui.loading_box import LoadingBox
+from beanquick.services.ledger_manager import get_ledger_data
 
 if TYPE_CHECKING:
     from beanquick.app import Beanquick
@@ -57,6 +60,7 @@ class StateManager:
             AppState.SHOWING_WELCOME: WelcomeState(app),
             AppState.SHOWING_SETUP: SetupState(app),
             AppState.LOADING_MAIN: LoadingMainState(app),
+            AppState.SHOWING_MAIN: MainState(app),
             AppState.ERROR: ErrorState(app),
             # Add other state handlers as needed
         }
@@ -70,6 +74,8 @@ class StateManager:
             },
             AppState.SHOWING_WELCOME: { AppState.SHOWING_SETUP, AppState.ERROR },
             AppState.SHOWING_SETUP: { AppState.LOADING_MAIN, AppState.ERROR },
+            AppState.LOADING_MAIN: { AppState.SHOWING_MAIN, AppState.ERROR },
+            AppState.SHOWING_MAIN: { AppState.LOADING_MAIN, AppState.ERROR },
             # Error state can transition to any state except itself to allow recovery
             AppState.ERROR: {
                 AppState.SHOWING_WELCOME, AppState.SHOWING_SETUP
@@ -156,7 +162,7 @@ class ErrorState(StateHandler):
 
         retry_button = toga.Button(
             "Try Again",
-            style=Pack(width=200),
+            style=Pack(width=350, height=28, font_weight=BOLD),
             on_press=self._handle_retry
         )
         error_box.add(retry_button)
@@ -248,7 +254,72 @@ class LoadingMainState(StateHandler):
         
         # Create a loading UI
         loading_box = LoadingBox()
+
+        # Start the asynchronous ledger loading task
+        try:
+            ledger = BeanquickLedger(path=ledger_file_path)
+        except ValueError as e:
+            logger.error(f"Failed to instantiate ledger for '{ledger_file_path}' on demand: {e}")
+            self.app.state_manager.transition_to(AppState.ERROR, error_message=str(e))
+            return toga.Box()
+        logger.info(f"Creating asyncio task to load ledger from {ledger_file_path}")
+        self.app.current_load_task = asyncio.create_task(self._async_load_ledger(ledger))
+
         return loading_box
 
     def get_title(self) -> str:
         return f"{self.app.formal_name} - Loading"
+
+    async def _async_load_ledger(self, ledger: BeanquickLedger):
+        """Asynchronous task to load the ledger."""
+        logger.info(f"Starting async ledger load task for {ledger.beancount_file_path}")
+        try:
+            await ledger.async_load_file()
+            logger.info(f"Async task completed: Data loading finished for {ledger.beancount_file_path}, success: {ledger.is_loaded}")
+            self._activate_ledger(ledger)
+        except asyncio.CancelledError:
+            logger.info("Ledger loading task was cancelled.")
+            self.app.state_manager.transition_to(AppState.ERROR, error_message="Ledger loading was cancelled.")
+        except Exception as e:
+            logger.error(f"Async task error: Exception during ledger load for {ledger.beancount_file_path}: {e}", exc_info=True)
+            self.app.state_manager.transition_to(AppState.ERROR, error_message=str(e))
+        finally:
+            if self.app.current_load_task and self.app.current_load_task.done():
+                self.app.current_load_task = None
+    
+    def _activate_ledger(self, ledger: BeanquickLedger):
+        """Activate the loaded ledger and transition to the main application state."""
+        logger.info(f"Activating ledger: {ledger.beancount_file_path}")
+
+        if self.app.active_ledger and self.app.active_ledger.beancount_file_path != ledger.beancount_file_path:
+            logger.info(f"Switching active ledger from {self.app.active_ledger.beancount_file_path} to {ledger.beancount_file_path}. Stopping old watcher.")
+            self.app.active_ledger.stop_watcher()
+        
+        with self.app.ledger_management_lock:
+            self.app.active_ledger = ledger
+            self.app.active_ledger_data = get_ledger_data(ledger)
+
+            # Transition to the main application state
+            logger.info(f"Transitioning to main application state with ledger: {ledger.beancount_file_path}")
+            self.app.state_manager.transition_to(AppState.SHOWING_MAIN)
+    
+class MainState(StateHandler):
+    """State handler for the main application view."""
+    
+    def enter(self, **kwargs) -> toga.Box:
+        logger.info("Entering Main State")
+        active_ledger = self.app.active_ledger
+        if not active_ledger or not active_ledger.is_loaded:
+            logger.error("No active ledger found or it is not loaded. Transitioning to setup state.")
+            self.app.state_manager.transition_to(AppState.SHOWING_SETUP, error_message="No active ledger found or it is not loaded.")
+            return toga.Box()
+        
+        main_box = toga.Box(style=Pack(direction=COLUMN, flex=1, padding=10))
+        main_box.add(toga.Label(f"Welcome to {self.app.formal_name}!",
+                                style=Pack(font_size=24, margin_bottom=20, text_align=CENTER)))
+        main_box.add(toga.Label(f"Active Ledger: {active_ledger.beancount_file_path}",
+                                style=Pack(font_size=18, margin_bottom=10, text_align=CENTER)))
+        return main_box
+    
+    def get_title(self) -> str:
+        return f"{self.app.formal_name}"
