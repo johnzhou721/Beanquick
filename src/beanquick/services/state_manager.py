@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from abc import ABC, abstractmethod
 from enum import Enum, auto
 from typing import TYPE_CHECKING
@@ -12,6 +13,7 @@ from toga.style.pack import COLUMN, CENTER  # type: ignore
 
 from beanquick.ui.welcome_box import WelcomeBox
 from beanquick.ui.setup_box import SetupBox
+from beanquick.ui.loading_box import LoadingBox
 
 if TYPE_CHECKING:
     from beanquick.app import Beanquick
@@ -54,6 +56,7 @@ class StateManager:
         self.state_handlers: dict[AppState, StateHandler] = {
             AppState.SHOWING_WELCOME: WelcomeState(app),
             AppState.SHOWING_SETUP: SetupState(app),
+            AppState.LOADING_MAIN: LoadingMainState(app),
             AppState.ERROR: ErrorState(app),
             # Add other state handlers as needed
         }
@@ -63,9 +66,10 @@ class StateManager:
         self.valid_transitions: dict[AppState, set[AppState]] = {
             AppState.INITIALIZING: {
                 AppState.SHOWING_WELCOME, AppState.SHOWING_SETUP,
-                AppState.ERROR
+                AppState.LOADING_MAIN, AppState.ERROR
             },
             AppState.SHOWING_WELCOME: { AppState.SHOWING_SETUP, AppState.ERROR },
+            AppState.SHOWING_SETUP: { AppState.LOADING_MAIN, AppState.ERROR },
             # Error state can transition to any state except itself to allow recovery
             AppState.ERROR: {
                 AppState.SHOWING_WELCOME, AppState.SHOWING_SETUP
@@ -80,6 +84,19 @@ class StateManager:
             self.transition_to(AppState.SHOWING_WELCOME)
         elif not self.app.config.is_setup_complete:
             self.transition_to(AppState.SHOWING_SETUP)
+        else:
+            # If first run and setup are complete, transition to loading main state
+            active_file = self.app.config.active_beancount_file
+            if active_file and Path(active_file).exists():
+                logger.info(f"Active Beancount file found: {active_file}")
+                self.transition_to(AppState.LOADING_MAIN, ledger_file_path=active_file)
+            elif active_file:  # File path exists in config but file itself doesn't
+                logger.warning(f"Active Beancount file not found: {active_file}")
+                self.app.config.remove_beancount_file(active_file, update_active=True)
+                self.transition_to(AppState.SHOWING_SETUP, error_message=f"The last used ledger file '{Path(active_file).name}' was not found.")
+            else:
+                logger.warning("No active Beancount file found, transitioning to setup.")
+                self.transition_to(AppState.SHOWING_SETUP)
 
     def transition_to(self, new_state: AppState, **kwargs) -> None:
         """Transition to a new application state."""
@@ -194,3 +211,44 @@ class SetupState(StateHandler):
     def setup_complete_handler(self, ledger_file_path: str):
         """Handler after the setup page is completed"""
         logger.info(f"Setup page completed, ledger file path: {ledger_file_path}")
+        # Add the selected ledger file to the config, it will also set the `active_beancount_file`
+        if self.app.config.add_beancount_file(ledger_file_path, set_active=True):
+            # Mark setup as complete
+            self.app.config.is_setup_complete = True
+            
+            # Transition to main app state
+            active_file = self.app.config.active_beancount_file
+            if active_file:
+                logger.info(f"Active Beancount file set to: {active_file}")
+                # Transition to loading main state
+                self.app.state_manager.transition_to(AppState.LOADING_MAIN, ledger_file_path=active_file)
+
+class LoadingMainState(StateHandler):
+    """State handler for loading the main application view."""
+    
+    def enter(self, **kwargs) -> toga.Box:
+        logger.info("Entering Loading Main State")
+        ledger_file_path = kwargs.get("ledger_file_path")
+
+        if not ledger_file_path:
+            logger.error("No ledger file path provided for loading main state.")
+
+            # Attempt to get the active Beancount file from config
+            ledger_file_path = self.app.config.active_beancount_file
+            if not ledger_file_path:
+                logger.error("No active Beancount file found, transitioning to setup state.")
+                self.app.state_manager.transition_to(AppState.SHOWING_SETUP, error_message="No active Beancount file found.")
+                return toga.Box()
+            logger.info(f"Using active Beancount file from config: {ledger_file_path}")
+        
+        if ledger_file_path != self.app.config.active_beancount_file:
+            # This might happen if a recent file is opened that wasn't the last active one
+            logger.info(f"Ledger to load ({ledger_file_path}) differs from current active in config ({self.app.config.active_beancount_file}). Updating active file.")
+            self.app.config.active_beancount_file = ledger_file_path
+        
+        # Create a loading UI
+        loading_box = LoadingBox()
+        return loading_box
+
+    def get_title(self) -> str:
+        return f"{self.app.formal_name} - Loading"

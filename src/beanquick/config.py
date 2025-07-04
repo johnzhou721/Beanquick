@@ -6,12 +6,14 @@ __license__ = "GNU GPLv2"
 import yaml
 import logging
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 
 CONFIG_FILENAME = "app_settings.yaml" 
 KEY_FIRST_RUN_COMPLETE = "first_run_complete"
 KEY_IS_SETUP_COMPLETE = "is_setup_complete"
+KEY_BEANCOUNT_FILES = "beancount_files"
+KEY_ACTIVE_BEANCOUNT_FILE = "active_beancount_file"
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +31,8 @@ class AppConfig:
     def _default_settings(self) -> dict[str, Any]:
         return {
             KEY_FIRST_RUN_COMPLETE: False,
+            KEY_BEANCOUNT_FILES: [],
+            KEY_ACTIVE_BEANCOUNT_FILE: None,
         }
 
     def _load_config(self) -> dict[str, Any]:
@@ -121,3 +125,127 @@ class AppConfig:
     def is_setup_complete(self, value: bool):
         """Set the setup completion status."""
         self.set_setting(KEY_IS_SETUP_COMPLETE, bool(value), auto_save=True)
+    
+    @property
+    def beancount_files(self) -> list[str]:
+        """Get the list of Beancount files."""
+        files = self.get_setting(KEY_BEANCOUNT_FILES, [])
+        return files if isinstance(files, list) else []
+    
+    @property
+    def active_beancount_file(self) -> str | None:
+        """Get the currently active Beancount file, if any."""
+        # Ensure the stored value (if present) is actually in the list of files
+        active_file = self.get_setting(KEY_ACTIVE_BEANCOUNT_FILE)
+        if active_file and active_file in self.beancount_files:
+            return active_file
+        elif self.beancount_files: # If no active file is set, return the most recent one
+            logger.debug("No active Beancount file set, returning most recent file.")
+            self.active_beancount_file = self.beancount_files[-1]
+            return self.beancount_files[-1]
+        return None
+    
+    @active_beancount_file.setter
+    def active_beancount_file(self, file_path: str | None) -> None:
+        new_active_file = None
+        abs_file_path = None
+        if file_path is not None:
+            try:
+                # Normalize path before checking/setting
+                abs_file_path = str(Path(file_path).resolve())
+            except OSError as e:
+                 logger.error(f"Could not resolve path '{file_path}' to set as active file: {e}")
+                 return
+
+            if not Path(abs_file_path).is_file():
+                # Do not change the active file if the new path is invalid.
+                # Save config if it was modified by an add_beancount_file attempt that failed before this check.
+                if not self.save_config(): logger.warning("Config save failed after invalid active file attempt.")
+                return
+            
+            # Use property getter which handles list validation
+            current_files = self.beancount_files 
+            if abs_file_path not in self.beancount_files:
+                logger.info(f"Active file '{abs_file_path}' not in known files. Adding it.")
+                # Use the add_beancount_file logic to also handle recency
+                # set_active=False here to avoid recursion with this setter, we'll set it below.
+                self.add_beancount_file(abs_file_path, set_active=False)
+                # add_beancount_file now handles its own saving, or defers to this setter.
+            
+            # Ensure it's at the end of the list for recency
+            current_files = self.beancount_files
+            if abs_file_path in current_files:
+                updated_files = [f for f in current_files if f != abs_file_path]
+                updated_files.append(abs_file_path)
+                if updated_files != current_files:
+                    self.set_setting(KEY_BEANCOUNT_FILES, updated_files, auto_save=False) # Defer save
+            
+            new_active_file = abs_file_path
+
+         # Only update and save if the value has actually changed
+        if self.get_setting(KEY_ACTIVE_BEANCOUNT_FILE) != new_active_file:
+            self.set_setting(KEY_ACTIVE_BEANCOUNT_FILE, new_active_file, auto_save=True)
+        elif not self.save_config(): # If other changes (like beancount_files list) occurred, ensure save
+             logger.warning(f"Config save failed in active_beancount_file setter even if active file itself didn't change.")
+
+    def add_beancount_file(self, file_path: str, set_active: bool = False) -> bool:
+        """Adds a Beancount file to the list if it's valid and not already present. 
+           Moves the file to the end of the list if it already exists (to mark as most recent).
+           Returns True if added or moved. 
+        """
+        try:
+            abs_file_path = str(Path(file_path).resolve())
+        except OSError as e:
+            logger.error(f"Failed to resolve path for {file_path}: {e}", exc_info=True)
+            return False
+        
+        if not Path(abs_file_path).is_file():
+            logger.error(f"File {abs_file_path} does not exist or is not a file.")
+            return False
+        
+        # Early return if the file is already at the end (most recent)
+        current_files = self.beancount_files
+        if current_files and current_files[-1] == abs_file_path and not set_active:
+            logger.debug(f"File {abs_file_path} is already the most recent, not adding.")
+            return True
+        
+        # Update the list of files
+        updated_files = [f for f in current_files if f != abs_file_path]
+        updated_files.append(abs_file_path)
+        self.set_setting(KEY_BEANCOUNT_FILES, updated_files, auto_save=False)
+
+        # Handle active file setting if needed
+        should_set_active = set_active or self.active_beancount_file is None
+
+        if should_set_active:
+            self.active_beancount_file = abs_file_path
+        else:
+            if not self.save_config():
+                logger.warning("Failed to auto-save configuration after adding Beancount file.")
+
+        logger.info(f"Ensured Beancount file is in list and marked as recent: {abs_file_path}")
+        return True
+    
+    def remove_beancount_file(self, file_path: str, update_active: bool = False) -> bool:
+        """Removes a Beancount file from the list. Returns True if removed."""
+        try:
+            # Normalize path for comparison
+            abs_file_path = str(Path(file_path).resolve()) 
+        except OSError as e:
+            logger.warning(f"Could not resolve file path for removal '{file_path}': {e}")
+            return False
+
+        current_files = self.beancount_files
+        if abs_file_path in current_files:
+            updated_files = [f for f in current_files if f != abs_file_path]
+            self.set_setting(KEY_BEANCOUNT_FILES, updated_files, auto_save=False) # Defer save
+            logger.info(f"Removed Beancount file: {abs_file_path}")
+            # Update active file if the removed one was active
+            if update_active and self.active_beancount_file == abs_file_path:
+                self.active_beancount_file = updated_files[-1] if updated_files else None
+            elif not self.save_config(): # Save if active file not changed by setter
+                 logger.warning(f"Failed to auto-save configuration after removing file.")
+            return True
+        logger.warning(f"Attempting to remove non-existent Beancount file: {abs_file_path}")
+        return False
+        
