@@ -11,6 +11,7 @@ from toga.style import Pack
 from toga.style.pack import COLUMN, CENTER  # type: ignore
 
 from beanquick.ui.welcome_box import WelcomeBox
+from beanquick.ui.setup_box import SetupBox
 
 if TYPE_CHECKING:
     from beanquick.app import Beanquick
@@ -52,6 +53,7 @@ class StateManager:
         self.current_state: AppState = AppState.INITIALIZING
         self.state_handlers: dict[AppState, StateHandler] = {
             AppState.SHOWING_WELCOME: WelcomeState(app),
+            AppState.SHOWING_SETUP: SetupState(app),
             AppState.ERROR: ErrorState(app),
             # Add other state handlers as needed
         }
@@ -59,7 +61,10 @@ class StateManager:
 
         # Valid state transitions
         self.valid_transitions: dict[AppState, set[AppState]] = {
-            AppState.INITIALIZING: { AppState.SHOWING_WELCOME, AppState.ERROR },
+            AppState.INITIALIZING: {
+                AppState.SHOWING_WELCOME, AppState.SHOWING_SETUP,
+                AppState.ERROR
+            },
             AppState.SHOWING_WELCOME: { AppState.SHOWING_SETUP, AppState.ERROR },
             # Error state can transition to any state except itself to allow recovery
             AppState.ERROR: {
@@ -71,10 +76,10 @@ class StateManager:
     def initialize_app_state(self) -> None:
         """Initialize the application state based on the app configuration."""
         logger.info("Initializing application state...")
-        if self.app.config is None:
-            self.transition_to(AppState.ERROR)
-        elif not self.app.config.is_first_run_complete:
+        if not self.app.config.is_first_run_complete:
             self.transition_to(AppState.SHOWING_WELCOME)
+        elif not self.app.config.is_setup_complete:
+            self.transition_to(AppState.SHOWING_SETUP)
 
     def transition_to(self, new_state: AppState, **kwargs) -> None:
         """Transition to a new application state."""
@@ -171,3 +176,21 @@ class WelcomeState(StateHandler):
         
         # Transition to main app state (could be a dashboard or main view)
         self.app.state_manager.transition_to(AppState.SHOWING_SETUP)
+
+class SetupState(StateHandler):
+    """State handler for the setup process where users select or create a Beancount ledger."""
+    
+    def enter(self, **kwargs) -> toga.Box:
+        logger.info("Entering Setup State")
+        # Create and return the setup UI
+        setup_box = SetupBox(
+            on_ledger_selected=self.setup_complete_handler,
+        )
+        return setup_box
+    
+    def get_title(self) -> str:
+        return f"{self.app.formal_name} - Setup"
+    
+    def setup_complete_handler(self, ledger_file_path: str):
+        """Handler after the setup page is completed"""
+        logger.info(f"Setup page completed, ledger file path: {ledger_file_path}")

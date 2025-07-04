@@ -1,4 +1,4 @@
-"""Constants for the Beanbot application."""
+"""Constants for the Beanquick application."""
 from __future__ import annotations
 
 __copyright__ = "Copyright (C) 2025 TwoBitsWare"

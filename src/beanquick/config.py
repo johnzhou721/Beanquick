@@ -11,6 +11,7 @@ from typing import Any, Optional
 
 CONFIG_FILENAME = "app_settings.yaml" 
 KEY_FIRST_RUN_COMPLETE = "first_run_complete"
+KEY_IS_SETUP_COMPLETE = "is_setup_complete"
 
 logger = logging.getLogger(__name__)
 
@@ -110,3 +111,13 @@ class AppConfig:
     @is_first_run_complete.setter
     def is_first_run_complete(self, value: bool):
         self.set_setting(KEY_FIRST_RUN_COMPLETE, bool(value), auto_save=True) # Ensure boolean
+    
+    @property
+    def is_setup_complete(self) -> bool:
+        """Check if the setup is complete."""
+        return bool(self.get_setting(KEY_IS_SETUP_COMPLETE, False))
+    
+    @is_setup_complete.setter
+    def is_setup_complete(self, value: bool):
+        """Set the setup completion status."""
+        self.set_setting(KEY_IS_SETUP_COMPLETE, bool(value), auto_save=True)
