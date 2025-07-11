@@ -18,7 +18,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from beanquick.core import BeanquickLedger
     from beanquick.core.accounts import AccountDict
     # from beanquick.core.extensions import ExtensionDetails
-    from beanquick.core.fava_options import FavaOptions
+    from beanquick.core.beanquick_options import FavaOptions
     from beanquick.helpers import BeancountError
 
 logger = logging.getLogger(__name__)
@@ -49,7 +49,7 @@ class LedgerData:
     currencies: Sequence[str]
     currency_names: dict[str, str]
     errors: Sequence[SerialisedError]
-    fava_options: FavaOptions
+    beanquick_options: FavaOptions
     have_excel: bool
     links: Sequence[str]
     options: dict[str, str | Sequence[str]]
@@ -94,7 +94,7 @@ def get_ledger_data(ledger: BeanquickLedger) -> LedgerData:
         ledger.attributes.currencies,
         ledger.commodities.names,
         get_errors(ledger),
-        ledger.fava_options,
+        ledger.beanquick_options,
         HAVE_EXCEL,
         ledger.attributes.links,
         _get_options(ledger),
@@ -102,12 +102,12 @@ def get_ledger_data(ledger: BeanquickLedger) -> LedgerData:
         ledger.format_decimal.precisions,
         ledger.attributes.tags,
         ledger.attributes.years,
-        all_queries[: ledger.fava_options.sidebar_show_queries],
+        all_queries[: ledger.beanquick_options.sidebar_show_queries],
         len(ledger.misc.upcoming_events),
         # ledger.extensions.extension_details,
         ledger.misc.sidebar_links,
     )
-def validate_ledger_file(app_instance, ledger_file_path: str) -> bool:
+def validate_ledger_file(app_instance, ledger_file_path: Path) -> bool:
     """Validate the ledger file."""
     if not ledger_file_path or not ledger_file_path.exists() or not ledger_file_path.is_file():
         logger.warning(f"Invalid ledger file path provided: {ledger_file_path}")

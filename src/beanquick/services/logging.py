@@ -127,3 +127,6 @@ def set_log_level(logger_name: str, level: int) -> None:
     logger = logging.getLogger(logger_name)
     logger.setLevel(level)
     logger.info(f"Log level changed to {logging.getLevelName(level)}")
+
+# Suppress watchfiles logging to avoid cluttering the console
+logging.getLogger('watchfiles.main').setLevel(logging.WARNING)

@@ -6,6 +6,7 @@ from collections import namedtuple
 from .lexer import BeanquickLexer
 from .helpers import BeanquickParseError
 from .data import (
+    BeanquickStatement,
     BeanquickTransaction, BeanquickPosting, BeanquickBalance,
     BeanquickPad, BeanquickPrice, BeanquickCommand
 )
@@ -247,6 +248,6 @@ class BeanquickParser:
                 logger.error("No tokens attribute found")
             raise
 
-    def parse(self, data: str, lexer_instance: BeanquickLexer) -> dict | None:
+    def parse(self, data: str, lexer_instance: BeanquickLexer) -> BeanquickStatement | None:
         return self.parser.parse(input=data, lexer=lexer_instance.lexer)
 

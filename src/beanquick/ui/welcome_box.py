@@ -13,28 +13,30 @@ from toga.constants import DODGERBLUE
 
 from beanquick.constants import DEFAULT_BUTTON_HEIGHT
 
+LARGE_MARGIN = 20
+DEFAULT_MARGIN = 8
+TITLE_FONT_SIZE = 36
 
 class WelcomeBox(toga.Box):
     def __init__(self, on_complete: Callable[[], None], **kwargs: Any):
         """A welcome box widget that displays a greeting screen.
         """
-        super().__init__(style=Pack(direction=COLUMN, align_items=CENTER), **kwargs)
+        super().__init__(style=Pack(direction=COLUMN, align_items=CENTER, margin=LARGE_MARGIN), **kwargs)
 
         self.on_complete = on_complete
 
         logo = toga.ImageView(
             image=toga.Image("resources/images/icon.png"),
-            style=Pack(height=128, width=128, margin_top=20)
+            style=Pack(height=128, width=128)
         )
 
         title_label = toga.Label(
             "Welcome to Beanquick",
             style=Pack(
                 text_align=CENTER,
-                font_size=36,
+                font_size=TITLE_FONT_SIZE,
                 font_weight=BOLD,
-                # margin_top=48,
-                margin_bottom=24,
+                margin_bottom=DEFAULT_MARGIN,
             )
         )
         slogan_label = toga.Label(
@@ -52,7 +54,7 @@ class WelcomeBox(toga.Box):
             on_press=self.on_continue_pressed,
             style=Pack(
                 font_weight=BOLD,
-                margin=(45,0),
+                margin_bottom=LARGE_MARGIN,
                 height=DEFAULT_BUTTON_HEIGHT,
                 width=480,
                 background_color=DODGERBLUE)
