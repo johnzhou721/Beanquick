@@ -16,6 +16,8 @@ from beanquick.core import BeanquickLedger
 from beanquick.ui.welcome_box import WelcomeBox
 from beanquick.ui.setup_box import SetupBox
 from beanquick.ui.loading_box import LoadingBox
+from beanquick.ui.entry_box import EntryBox
+from beanquick.ui.base_entry_box import EntryMode
 from beanquick.services.ledger_manager import get_ledger_data
 
 if TYPE_CHECKING:
@@ -142,7 +144,15 @@ class StateManager:
             
             # Update the main window content
             self.app.main_window.content = content
+            # Update the window title
             self.app.main_window.title = handler.get_title()
+
+            # focus only takes effect after the UI is rendered
+            if isinstance(content, EntryBox):
+                if content.current_form:
+                    # If the content is an EntryBox, focus the first input field
+                    content.current_form.focus_first_input()
+
             logger.info(f"Transitioned to state {new_state} with handler {handler.__class__.__name__}")
         except Exception as e:
             logger.error(f"Error entering state {new_state}: {e}", exc_info=True)
@@ -305,6 +315,12 @@ class LoadingMainState(StateHandler):
     
 class MainState(StateHandler):
     """State handler for the main application view."""
+    def __init__(self, app: Beanquick):
+        super().__init__(app)
+
+        self.main_box: EntryBox | None = None
+        self._quick_mode_command: toga.Command | None = None
+        self._normal_mode_command: toga.Command | None = None
     
     def enter(self, **kwargs) -> toga.Box:
         logger.info("Entering Main State")
@@ -314,12 +330,61 @@ class MainState(StateHandler):
             self.app.state_manager.transition_to(AppState.SHOWING_SETUP, error_message="No active ledger found or it is not loaded.")
             return toga.Box()
         
-        main_box = toga.Box(style=Pack(direction=COLUMN, flex=1, padding=10))
-        main_box.add(toga.Label(f"Welcome to {self.app.formal_name}!",
-                                style=Pack(font_size=24, margin_bottom=20, text_align=CENTER)))
-        main_box.add(toga.Label(f"Active Ledger: {active_ledger.beancount_file_path}",
-                                style=Pack(font_size=18, margin_bottom=10, text_align=CENTER)))
-        return main_box
+        self.main_box = EntryBox(app_instance=self.app)
+
+        # Setup commands
+        self._setup_commands(self.main_box)
+
+        return self.main_box
     
     def get_title(self) -> str:
         return f"{self.app.formal_name}"
+    
+    def _setup_commands(self, entry_box: EntryBox):
+        """Setup application commands for the main window."""
+        # Add Help command to the menu
+        self._quick_mode_command = toga.Command(
+            lambda widget: self._toggle_mode(entry_box, widget),
+            text='Quick Mode',
+            shortcut=toga.Key.MOD_1 + "/",
+            group=toga.Group.COMMANDS,
+            section=1,
+            order=0,
+            icon="resources/images/NotoHighVoltage.png",
+        )
+        self._normal_mode_command = toga.Command(
+            lambda widget: self._toggle_mode(entry_box, widget),
+            text='Normal Mode',
+            shortcut=toga.Key.MOD_1 + "/",
+            group=toga.Group.COMMANDS,
+            section=1,
+            order=0,
+            icon="resources/images/NotoMemo.png",
+        )
+        help_command = toga.Command(
+            self._show_help,
+            text='Help',
+            group=toga.Group.HELP,  # Standard Help group
+            section=1,
+            icon="resources/images/NotoRingBuoy.png",
+        )
+        preferences_command = toga.Command.standard(self.app, toga.Command.PREFERENCES)
+        self.app.commands.add(preferences_command)
+        self.app.main_window.toolbar.add(self._quick_mode_command, help_command)
+        
+    def _toggle_mode(self, entry_box: EntryBox, widget):
+        """Switch to quick entry mode in the main application."""
+        logger.info("Switching to quick entry mode")
+        entry_box.on_toggle_mode()
+        if entry_box._current_mode == EntryMode.QUICK:
+            self.app.main_window.toolbar.add(self._normal_mode_command)
+            self.app.main_window.toolbar.discard(self._quick_mode_command)
+            self.app.commands.discard(self._quick_mode_command)
+        else:
+            self.app.main_window.toolbar.add(self._quick_mode_command)
+            self.app.main_window.toolbar.discard(self._normal_mode_command)
+            self.app.commands.discard(self._normal_mode_command)
+
+    def _show_help(self, widget):
+        """Show help dialog."""
+        logger.info("Showing help dialog")
