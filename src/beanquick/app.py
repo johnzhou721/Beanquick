@@ -59,13 +59,19 @@ class Beanquick(toga.App):
         logger.info(f"{self.formal_name} starting up...")
 
         # TODO: Set size and position based on user settings or CONSTANTS
-        self.main_window = toga.MainWindow(title=self.formal_name, size=(840, 670))
+        self.main_window = toga.MainWindow(title=self.formal_name, size=(740, 600))
 
         # Determine initial state and navigate there
         self.state_manager.initialize_app_state()
 
         # Show the main window
         self.main_window.show()
+
+    def preferences(self, widget=None, **kwargs):
+        """Show the settings window."""
+        logger.info("Showing settings window")
+        from beanquick.ui.preferences_window import show_preferences_window
+        show_preferences_window(self)
 
 
 def main():
