@@ -123,7 +123,7 @@ class BeanquickLexer:
     
     # COMMAND state tokens - for parsing command parameters
     def t_command_COMMAND_PARAM(self, t):
-        r'(?:\d*\.\d+|\d+|[a-zA-Z_][a-zA-Z0-9_.-]*|"[^"]*")'
+        r'(?:\d{4}-\d{2}-\d{2}|\d*\.\d+|\d+|[a-zA-Z_][a-zA-Z0-9_.-]*|"[^"]*")'
         # Handle different parameter types
         if t.value.startswith('"') and t.value.endswith('"'):
             t.value = t.value[1:-1]  # Strip quotes
