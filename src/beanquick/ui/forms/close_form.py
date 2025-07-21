@@ -1,4 +1,4 @@
-"""Balance directive form implementation."""
+"""Close directive form implementation."""
 from __future__ import annotations
 
 import logging
@@ -10,7 +10,6 @@ from toga.style.pack import ROW, COLUMN  # type: ignore
 
 from beanquick.ui.forms.base_form import BaseDirectiveForm
 from beanquick.ui.components.autocomplete_account_field import AutocompleteAccountField
-from beanquick.ui.components.amount_field import AmountField
 from beanquick.ui.forms.form_utils import MacOSTabChainMixin, FormValidationMixin, get_text_input_widgets_from_dict
 
 
@@ -18,47 +17,35 @@ logger = logging.getLogger(__name__)
 
 WIDGET_SPACING = 5
 
-class BalanceForm(BaseDirectiveForm, MacOSTabChainMixin, FormValidationMixin):
-    """Form for creating Balance directives."""
+class CloseForm(BaseDirectiveForm, MacOSTabChainMixin, FormValidationMixin):
+    """Form for creating Close directives."""
     
     def __init__(self, on_change=None, account_completer=None, completion_timers=None, app=None, **kwargs):
         super().__init__(on_change)
         self.account_completer = account_completer
         self.completion_timers = completion_timers or {}
         self.app = app
-        self._setup_balance_fields()
+        self._setup_close_fields()
 
-    def _setup_balance_fields(self):
-        """Set up balance-specific fields."""
+    def _setup_close_fields(self):
+        """Set up close-specific fields."""
         self.account_field = AutocompleteAccountField(
             placeholder="Account",
             on_change=self._on_field_change,
-            on_confirm=self._on_account_confirm,
             account_completer=self.account_completer,
             completion_timers=self.completion_timers,
             app=self.app,
-            style=Pack(flex=2, margin=(0, WIDGET_SPACING)),
-        )
-        
-        self.amount_field = AmountField(
-            placeholder="Amount",
-            on_change=self._on_field_change,
-            style=Pack(flex=1),
+            style=Pack(flex=2, margin_left=WIDGET_SPACING),
         )
         
         # Store references
         self._widgets.update({
             "account": self.account_field.widget,
-            "amount": self.amount_field.widget,
         })
 
         # Fix macOS tab chain using the mixin
         text_inputs = get_text_input_widgets_from_dict(self._widgets)
         self.fix_macos_tab_chain(text_inputs)
-
-    def _on_account_confirm(self, widget: toga.Widget):
-        """Handle account confirmation."""
-        self.amount_field.focus()
 
     def create_form_widget(self) -> toga.Widget:
         """Create the main form widget."""
@@ -69,7 +56,6 @@ class BalanceForm(BaseDirectiveForm, MacOSTabChainMixin, FormValidationMixin):
             children=[
                 self.date_field.widget,
                 self.account_field.widget,
-                self.amount_field.widget,
             ]
         )
 
@@ -94,21 +80,18 @@ class BalanceForm(BaseDirectiveForm, MacOSTabChainMixin, FormValidationMixin):
         return scroll_container
     
     def build_directive_dict(self) -> Dict[str, Any]:
-        """Build dictionary for Balance serialization."""
-
+        """Build dictionary for Close serialization."""
         return {
-            "t": "Balance",
+            "t": "Close",
             "meta": {},
             "date": self.get_date_value(),
             "account": self.account_field.value.strip(),
-            "amount": self.amount_field.widget.value.strip(),
         }
 
     def clear_form(self):
         """Clear all form data."""
         self.clear_common_fields()
         self.account_field.clear()
-        self.amount_field.clear()
     
     def is_form_valid(self) -> bool:
         """Check if form data is valid."""
@@ -121,12 +104,10 @@ class BalanceForm(BaseDirectiveForm, MacOSTabChainMixin, FormValidationMixin):
         
         self.validate_date_field(self.get_date_value(), errors)
         self.validate_required_field(self.account_field.value, "Account", errors)
-        self.validate_required_field(self.amount_field.widget.value, "Amount", errors)
         
         return errors
     
     def is_form_empty(self) -> bool:
         """Check if form is empty."""
         return (self.is_common_fields_empty() and 
-                not self.account_field.value.strip() and 
-                not self.amount_field.widget.value.strip())
+                not self.account_field.value.strip())

@@ -10,6 +10,13 @@ from dataclasses import dataclass
 from beanquick.ui.forms.base_form import BaseDirectiveForm
 from beanquick.ui.forms.transaction_form import TransactionForm
 from beanquick.ui.forms.balance_form import BalanceForm
+from beanquick.ui.forms.open_form import OpenForm
+from beanquick.ui.forms.close_form import CloseForm
+from beanquick.ui.forms.commodity_form import CommodityForm
+from beanquick.ui.forms.event_form import EventForm
+from beanquick.ui.forms.pad_form import PadForm
+from beanquick.ui.forms.note_form import NoteForm
+from beanquick.ui.forms.price_form import PriceForm
 
 logger = logging.getLogger(__name__)
 
@@ -44,23 +51,62 @@ class DirectiveFactory:
             icon="⚖️",
             category="Validation"
         ),
-        # TODO: Add other directive types as we implement their forms
-        # "open": DirectiveMetadata(
-        #     name="open",
-        #     display_name="Open",
-        #     description="Open a new account",
-        #     form_class=OpenForm,
-        #     icon="🔓",
-        #     category="Account Management"
-        # ),
-        # "close": DirectiveMetadata(
-        #     name="close",
-        #     display_name="Close",
-        #     description="Close an existing account",
-        #     form_class=CloseForm,
-        #     icon="🔒",
-        #     category="Account Management"
-        # ),
+        "open": DirectiveMetadata(
+            name="open",
+            display_name="Open",
+            description="Open a new account",
+            form_class=OpenForm,
+            icon="🔓",
+            category="Account Management"
+        ),
+        "close": DirectiveMetadata(
+            name="close",
+            display_name="Close",
+            description="Close an existing account",
+            form_class=CloseForm,
+            icon="🔒",
+            category="Account Management"
+        ),
+        "commodity": DirectiveMetadata(
+            name="commodity",
+            display_name="Commodity",
+            description="Declare a commodity/currency",
+            form_class=CommodityForm,
+            icon="💱",
+            category="Declaration"
+        ),
+        "event": DirectiveMetadata(
+            name="event",
+            display_name="Event",
+            description="Record a dated event with a type and description",
+            form_class=EventForm,
+            icon="📅",
+            category="Documentation"
+        ),
+        "pad": DirectiveMetadata(
+            name="pad",
+            display_name="Pad",
+            description="Transfer money from a source account to make balances match",
+            form_class=PadForm,
+            icon="🔄",
+            category="Validation"
+        ),
+        "note": DirectiveMetadata(
+            name="note",
+            display_name="Note",
+            description="Add a note comment to an account on a specific date",
+            form_class=NoteForm,
+            icon="📝",
+            category="Documentation"
+        ),
+        "price": DirectiveMetadata(
+            name="price",
+            display_name="Price",
+            description="Record the price of a currency or commodity",
+            form_class=PriceForm,
+            icon="💰",
+            category="Market Data"
+        ),
     }
     
     @classmethod

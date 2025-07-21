@@ -45,6 +45,7 @@ class TemplateRenderer:
 
         # 2. Define system built-in variables
         system_vars = {
+            'datetime': datetime,
             'date': datetime.date.today().isoformat(),
             'yesterday': (datetime.date.today() - datetime.timedelta(days=1)).isoformat(),
             'args': params,

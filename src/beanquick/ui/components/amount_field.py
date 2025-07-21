@@ -47,6 +47,10 @@ class AmountField:
         
         return amount_text
     
+    def focus(self):
+        """Focus the input widget."""
+        self.widget.focus()
+    
     def clear(self):
         """Clear the field."""
         self.widget.value = ""

@@ -3,7 +3,8 @@ from __future__ import annotations
 
 import sys
 import logging
-from typing import Dict, Any, List, NamedTuple, TYPE_CHECKING
+import re
+from typing import Dict, Any, List, TYPE_CHECKING
 
 import toga
 from toga.style import Pack
@@ -11,7 +12,8 @@ from toga.style.pack import ROW, COLUMN, START, CENTER  # type: ignore
 
 from beanquick.beans.flags import FLAG_OKAY, FLAG_WARNING
 from beanquick.ui.forms.base_form import BaseDirectiveForm
-from beanquick.ui.suggestion_popup import SuggestionPopup
+from beanquick.ui.components.posting_line import PostingLineComponent
+from beanquick.ui.forms.form_utils import MacOSTabChainMixin, FormValidationMixin, get_text_input_widgets_from_dict
 from beanquick.services.beanquick_integration import get_beanquick_integration
 
 
@@ -22,53 +24,13 @@ logger = logging.getLogger(__name__)
 
 WIDGET_SPACING = 5
 
-class PostingLine(NamedTuple):
-    """Represents a single posting line with all its UI components."""
-    posting_box: toga.Box
-    erase_button: toga.Button
-    account_input: toga.TextInput
-    amount_input: toga.TextInput
-    suggestion_popup: SuggestionPopup
-    
-    @property
-    def account_text(self) -> str:
-        """Get the trimmed account text."""
-        return self.account_input.value.strip() if self.account_input.value else ""
-    
-    @property
-    def amount_text(self) -> str:
-        """Get the trimmed amount text."""
-        return self.amount_input.value.strip() if self.amount_input.value else ""
-    
-    @property
-    def has_data(self) -> bool:
-        """Check if this posting line has any data."""
-        return bool(self.account_text or self.amount_text)
-    
-    @property
-    def is_complete(self) -> bool:
-        """Check if this posting line has both account and amount."""
-        return bool(self.account_text and self.amount_text)
-    
-    def clear(self):
-        """Clear all data in this posting line."""
-        self.account_input.value = ""
-        self.amount_input.value = ""
-        self.erase_button.enabled = False
-        self.suggestion_popup.hide()
-    
-    def update_erase_button(self):
-        """Update the erase button state based on data presence."""
-        self.erase_button.enabled = self.has_data
-
-class TransactionForm(BaseDirectiveForm):
+class TransactionForm(BaseDirectiveForm, MacOSTabChainMixin, FormValidationMixin):
     """Form for creating Transaction directives."""
 
     def __init__(self, on_change=None, account_completer=None, completion_timers=None, app: Beanquick | None = None):
         self.account_completer = account_completer
         self.completion_timers = completion_timers or {}
-        self._posting_lines: List[PostingLine] = []
-        self._setting_suggestion: bool = False
+        self._posting_lines: List[PostingLineComponent] = []
         self.app = app
 
         super().__init__(on_change)
@@ -229,8 +191,7 @@ class TransactionForm(BaseDirectiveForm):
         """Get validation errors."""
         errors = []
         
-        if not self.get_date_value():
-            errors.append("Date is required")
+        self.validate_date_field(self.get_date_value(), errors)
         
         # Check for at least two postings with accounts
         posting_accounts = [line.account_text for line in self._posting_lines if line.account_text]
@@ -254,63 +215,44 @@ class TransactionForm(BaseDirectiveForm):
 
     def _add_posting_line(self):
         """Add a new posting line to the form."""
-        account_input = toga.TextInput(
-            style=Pack(flex=3),
-            placeholder="Account",
-            on_change=self._on_account_input_change,
-            on_gain_focus=self._on_input_gain_focus,
-            on_lose_focus=self._on_account_input_lose_focus,
-            on_confirm=self._on_account_input_confirm,
-        )
-        amount_input = toga.TextInput(
-            style=Pack(flex=1, margin_left=WIDGET_SPACING),
-            placeholder="Amount",
+        # Create a new posting line component
+        posting_line = PostingLineComponent(
+            account_completer=self.account_completer,
+            completion_timers=self.completion_timers,
+            app=self.app,
             on_change=self._on_field_change,
+            on_erase=self._on_posting_line_erase,
+            on_scroll_request=self._scroll_to_widget,
+            on_gain_focus=self._on_input_gain_focus,
         )
-        erase_button = toga.Button(
-            "⌦",
-            style=Pack(width=24, margin_right=WIDGET_SPACING),
-            enabled=False,
-            on_press=self._erase_posting_line
-        )
-
-        # Create a container for the posting line and its suggestions
-        posting_line_container = toga.Box(
-            style=Pack(direction=COLUMN),
-            children=[]
-        )
-        
-        posting_box = toga.Box(
-            style=Pack(direction=ROW, align_items=CENTER, margin_top=WIDGET_SPACING),
-            children=[
-                erase_button,
-                account_input,
-                amount_input,
-            ]
-        )
-        
-        posting_line_container.add(posting_box)
-        
-        # Create suggestion popup for this account input
-        suggestion_popup = SuggestionPopup(
-            posting_line_container,
-            lambda selected: self._on_suggestion_selected(account_input, selected)
-        )
-        
-        # Create the PostingLine object
-        line = PostingLine(posting_box, erase_button, account_input, amount_input, suggestion_popup)
         
         # Add to our tracking list
-        self._posting_lines.append(line)
+        self._posting_lines.append(posting_line)
 
-        # Add to the UI container
-        self.postings_box.add(posting_line_container)
+        # Set up the posting line in the container (for suggestion popup support)
+        posting_line.setup_in_container(self.postings_box)
 
         # macOS-specific fix for tab navigation on dynamically added TextInputs
         if sys.platform == "darwin":
             self._fix_macos_tab_chain()
         
         logger.debug(f"Added posting line. Total lines: {len(self._posting_lines)}")
+    
+    def _on_posting_line_erase(self, posting_line: PostingLineComponent, **kwargs):
+        """Handle erase button press for a posting line."""
+        # Find the index of the posting line
+        for i, line in enumerate(self._posting_lines):
+            if line == posting_line:
+                if len(self._posting_lines) > 1:
+                    self._remove_posting_line(i)
+                    self._on_field_change(None)
+                else:
+                    # If it's the last line, just clear it
+                    line.clear()
+                    self._on_field_change(None)
+                return
+        
+        logger.warning("Erase button pressed but no matching posting line found")
     
     # https://github.com/beeware/toga/issues/2766
     # Set initial focus will cause tab navigation issues
@@ -334,7 +276,7 @@ class TransactionForm(BaseDirectiveForm):
 
             # Add posting inputs in order
             for line in self._posting_lines:
-                text_inputs.append(line.account_input)
+                text_inputs.append(line.account_field.widget)
                 text_inputs.append(line.amount_input)
 
             # Get native NSTextField objects
@@ -380,12 +322,12 @@ class TransactionForm(BaseDirectiveForm):
         line = self._posting_lines[line_index]
 
         # Hide suggestion popup before removing
-        # TODO: Maybe not need as the losing focus should take care of it
-        line.suggestion_popup.hide()
+        if line.account_field.suggestion_popup:
+            line.account_field.suggestion_popup.hide()
 
-        # Remove from UI container
+        # Remove from UI container - find and remove the wrapper
         for child in self.postings_box.children:
-            if hasattr(child, 'children') and line.posting_box in child.children:
+            if hasattr(child, 'children') and line.container in child.children:
                 self.postings_box.remove(child)
                 break
         
@@ -393,17 +335,6 @@ class TransactionForm(BaseDirectiveForm):
         self._posting_lines.pop(line_index)
         
         logger.debug(f"Removed posting line {line_index}. Total lines: {len(self._posting_lines)}")
-    
-    def _erase_posting_line(self, widget, **kwargs):
-        """Handle the erase button press for a posting line."""
-        # Find the index of the button in the posting lines
-        for i, line in enumerate(self._posting_lines):
-            if line.erase_button == widget:
-                self._remove_posting_line(i)
-                self._on_field_change(widget)
-                return
-        
-        logger.warning("Erase button pressed but no matching posting line found")
     
     def _manage_posting_lines(self):
         """Manage dynamic addition and removal of posting lines."""
@@ -430,136 +361,6 @@ class TransactionForm(BaseDirectiveForm):
         for i in range(len(self._posting_lines) - 1):  # Exclude last line
             line = self._posting_lines[i]
             line.update_erase_button()
-    
-    def _on_account_input_change(self, widget, **kwargs):
-        """Handle account input changes for autocompletion."""
-        # First call the regular change handler
-        self._on_field_change(widget, **kwargs)
-        
-        if self._setting_suggestion:
-            return
-        
-        # Check for special navigation characters (if keyboard events aren't available)
-        value = widget.value
-        if value and len(value) > 0:
-            last_char = value[-1]
-            
-            # Find the suggestion popup for this widget
-            suggestion_popup = None
-            for line in self._posting_lines:
-                if line.account_input == widget:
-                    suggestion_popup = line.suggestion_popup
-                    break
-            
-            if suggestion_popup and suggestion_popup.is_visible:
-                # Handle special navigation (this is a fallback approach)
-                if last_char == ',':  # Comma key
-                    self._setting_suggestion = True
-                    try:
-                        # Remove the comma character
-                        widget.value = value[:-1]
-                        suggestion_popup.navigate_up()
-                    finally:
-                        self._setting_suggestion = False
-                    return
-                
-                if last_char == '.':  # Period key
-                    self._setting_suggestion = True
-                    try:
-                        # Remove the period character
-                        widget.value = value[:-1]
-                        suggestion_popup.navigate_down()
-                    finally:
-                        self._setting_suggestion = False
-                    return
-
-                if last_char == ' ':  # Space key
-                    self._setting_suggestion = True
-                    try:
-                        # Remove the space character
-                        widget.value = value[:-1]
-                        suggestion_popup.select_current()
-                    finally:
-                        self._setting_suggestion = False
-                    return
-        
-        # Handle autocompletion with debouncing
-        self._debounced_account_completion(widget)
-    
-    def _debounced_account_completion(self, widget: toga.TextInput):
-        """Handle debounced account completion."""
-        # Create a unique key for this widget's completion timer
-        widget_id = id(widget)
-        
-        # Cancel any existing timer for this widget
-        if widget_id in self.completion_timers and self.completion_timers[widget_id]:
-            self.completion_timers[widget_id].cancel()
-        
-        # Start new debounced timer
-        # schedule_delayed_callback
-        if self.app and hasattr(self.app, 'loop'):
-            self.completion_timers[widget_id] = self.app.loop.call_later(
-                0.3,  # 300ms delay
-                lambda: self._debounced_account_completion_handler(widget)
-            )
-        else:
-            # Fallback: call immediately if no app loop available
-            self._debounced_account_completion_handler(widget)
-    
-    def _debounced_account_completion_handler(self, widget):
-        """Actual completion handling logic after debouncing."""
-        try:
-            # Get the query and find the suggestion popup
-            query = widget.value
-            suggestion_popup = None
-            
-            for line in self._posting_lines:
-                if line.account_input == widget:
-                    suggestion_popup = line.suggestion_popup
-                    break
-            
-            if not suggestion_popup:
-                return
-            
-            if not query or not query.strip():
-                suggestion_popup.hide()
-                return
-            
-            # Get suggestions directly (no async needed)
-            if self.account_completer:
-                suggestions = self.account_completer.get_suggestions(query.strip())
-                if suggestions:
-                    # Scroll to bring the current input to the top, accounting for popup space
-                    suggestion_popup.show_suggestions(suggestions)
-                    self._scroll_to_widget(widget)
-                else:
-                    suggestion_popup.hide()
-                
-        except Exception as e:
-            logger.debug(f"Error in debounced completion: {e}")
-
-    def _on_suggestion_selected(self, account_input: toga.TextInput, selected_account: str):
-        """Handle suggestion selection."""
-        self._setting_suggestion = True
-        try:
-            account_input.value = selected_account
-            self._on_field_change(account_input)
-        finally:
-            self._setting_suggestion = False
-        
-        # Try to focus the amount input for this line
-        for line in self._posting_lines:
-            if line.account_input == account_input:
-                try:
-                    line.amount_input.focus()
-                except Exception:
-                    pass  # Focus might not work on all platforms
-                break
-    
-    def _on_input_gain_focus(self, widget, **kwargs):
-        """Handle input gaining focus, scroll only if out of view."""
-        if self._is_widget_out_of_view(widget):
-            self._scroll_to_widget(widget)
 
     def _is_widget_out_of_view(self, widget) -> bool:
         """Test whether a widget is out of view in the scroll container."""
@@ -591,7 +392,7 @@ class TransactionForm(BaseDirectiveForm):
         except Exception as e:
             logger.debug(f"Error checking widget visibility: {e}")
             return True  # If we can't determine, err on the side of scrolling
-    
+
     def _scroll_to_widget(self, widget):
         """Scroll the entry form to make a specific widget visible, accounting for suggestion popup."""
         try:
@@ -611,12 +412,12 @@ class TransactionForm(BaseDirectiveForm):
             suggestion_popup = None
             popup_height = 0
             for line in self._posting_lines:
-                if line.account_input == widget:
-                    suggestion_popup = line.suggestion_popup
+                if line.account_field.widget == widget:
+                    suggestion_popup = line.account_field.suggestion_popup
                     break
             
             # Get popup height if it's visible
-            if suggestion_popup and suggestion_popup.is_visible:
+            if suggestion_popup and hasattr(suggestion_popup, 'is_visible') and suggestion_popup.is_visible:
                 try:
                     popup_height = suggestion_popup.popup_box.layout.content_height
                 except Exception:
@@ -639,23 +440,23 @@ class TransactionForm(BaseDirectiveForm):
             
             # Check if total content (widget + popup) is larger than scroll container
             if total_content_height >= scroll_height:
-                # Step 3: If total height is larger than container, align widget top with container top (with spacing)
+                # If total height is larger than container, align widget top with container top (with spacing)
                 target_position = widget_relative_top - WIDGET_SPACING
                 logger.debug(f"Total content ({total_content_height}) >= scroll height ({scroll_height}), aligning top with spacing")
             
             elif widget_relative_bottom > visible_bottom:
-                # Step 1: Widget is below visible area, align widget bottom (+ popup) with container bottom (with spacing)
+                # Widget is below visible area, align widget bottom (+ popup) with container bottom (with spacing)
                 target_position = widget_relative_top + total_content_height - scroll_height + WIDGET_SPACING
                 logger.debug(f"Widget below view, aligning bottom with popup space and spacing")
             
             elif widget_relative_top < visible_top:
-                # Step 2: Widget is above visible area, align widget top with container top (with spacing)
+                # Widget is above visible area, align widget top with container top (with spacing)
                 target_position = widget_relative_top - WIDGET_SPACING
                 logger.debug(f"Widget above view, aligning top with spacing")
             
             else:
                 # Widget is already visible, but check if popup would be cut off
-                if suggestion_popup and suggestion_popup.is_visible:
+                if suggestion_popup and hasattr(suggestion_popup, 'is_visible') and suggestion_popup.is_visible:
                     popup_bottom = widget_relative_bottom + popup_height
                     if popup_bottom > visible_bottom:
                         # Popup would be cut off, scroll to show it (with spacing)
@@ -675,24 +476,10 @@ class TransactionForm(BaseDirectiveForm):
         except Exception as e:
             logger.debug(f"Error scrolling to widget: {e}")
 
-    def _on_account_input_lose_focus(self, widget):
-        """Handle account input losing focus."""
-        line = self._find_posting_line_by_account_input(widget)
-        if line:
-            line.suggestion_popup.hide()
-    
-    def _on_account_input_confirm(self, widget):
-        """Handle account input confirmation."""
-        line = self._find_posting_line_by_account_input(widget)
-        if line:
-            line.suggestion_popup.select_current()
-
-    def _find_posting_line_by_account_input(self, account_input: toga.TextInput) -> PostingLine | None:
-        """Find the posting line for the given account input."""
-        for line in self._posting_lines:
-            if line.account_input == account_input:
-                return line
-        return None
+    def _on_input_gain_focus(self, widget, **kwargs):
+        """Handle input gaining focus, scroll only if out of view."""
+        if self._is_widget_out_of_view(widget):
+            self._scroll_to_widget(widget)
             
     def _on_flag_press(self, widget, **kwargs):
         """Handle the flag toggle action."""

@@ -1,4 +1,4 @@
-"""Balance directive form implementation."""
+"""Price directive form implementation."""
 from __future__ import annotations
 
 import logging
@@ -9,8 +9,6 @@ from toga.style import Pack
 from toga.style.pack import ROW, COLUMN  # type: ignore
 
 from beanquick.ui.forms.base_form import BaseDirectiveForm
-from beanquick.ui.components.autocomplete_account_field import AutocompleteAccountField
-from beanquick.ui.components.amount_field import AmountField
 from beanquick.ui.forms.form_utils import MacOSTabChainMixin, FormValidationMixin, get_text_input_widgets_from_dict
 
 
@@ -18,70 +16,56 @@ logger = logging.getLogger(__name__)
 
 WIDGET_SPACING = 5
 
-class BalanceForm(BaseDirectiveForm, MacOSTabChainMixin, FormValidationMixin):
-    """Form for creating Balance directives."""
+class PriceForm(BaseDirectiveForm, MacOSTabChainMixin, FormValidationMixin):
+    """Form for creating Price directives."""
     
-    def __init__(self, on_change=None, account_completer=None, completion_timers=None, app=None, **kwargs):
+    def __init__(self, on_change=None, **kwargs):
         super().__init__(on_change)
-        self.account_completer = account_completer
-        self.completion_timers = completion_timers or {}
-        self.app = app
-        self._setup_balance_fields()
+        self._setup_price_fields()
 
-    def _setup_balance_fields(self):
-        """Set up balance-specific fields."""
-        self.account_field = AutocompleteAccountField(
-            placeholder="Account",
+    def _setup_price_fields(self):
+        """Set up price-specific fields."""
+        self.currency_field = toga.TextInput(
+            placeholder="Currency/commodity (e.g., USD, AAPL, BTC)",
             on_change=self._on_field_change,
-            on_confirm=self._on_account_confirm,
-            account_completer=self.account_completer,
-            completion_timers=self.completion_timers,
-            app=self.app,
             style=Pack(flex=2, margin=(0, WIDGET_SPACING)),
         )
         
-        self.amount_field = AmountField(
-            placeholder="Amount",
+        self.amount_field = toga.TextInput(
+            placeholder="Price amount (e.g., 150.25 USD)",
             on_change=self._on_field_change,
-            style=Pack(flex=1),
+            style=Pack(flex=2),
         )
         
         # Store references
         self._widgets.update({
-            "account": self.account_field.widget,
-            "amount": self.amount_field.widget,
+            "currency": self.currency_field,
+            "amount": self.amount_field,
         })
 
         # Fix macOS tab chain using the mixin
         text_inputs = get_text_input_widgets_from_dict(self._widgets)
         self.fix_macos_tab_chain(text_inputs)
 
-    def _on_account_confirm(self, widget: toga.Widget):
-        """Handle account confirmation."""
-        self.amount_field.focus()
-
     def create_form_widget(self) -> toga.Widget:
         """Create the main form widget."""
         
-        # Create the main fields
-        date_row = toga.Box(
+        # Create the main fields row
+        main_row = toga.Box(
             style=Pack(direction=ROW, margin_bottom=10),
             children=[
                 self.date_field.widget,
-                self.account_field.widget,
-                self.amount_field.widget,
+                self.currency_field,
+                self.amount_field,
             ]
         )
 
         form_box = toga.Box(
             style=Pack(direction=COLUMN, margin=WIDGET_SPACING),
             children=[
-                date_row,
+                main_row,
             ]
         )
-
-        # Set up the account field's suggestion popup
-        self.account_field.setup_in_container(form_box)
         
         # Wrap in scroll container for consistency
         scroll_container = toga.ScrollContainer(
@@ -94,21 +78,20 @@ class BalanceForm(BaseDirectiveForm, MacOSTabChainMixin, FormValidationMixin):
         return scroll_container
     
     def build_directive_dict(self) -> Dict[str, Any]:
-        """Build dictionary for Balance serialization."""
-
+        """Build dictionary for Price serialization."""
         return {
-            "t": "Balance",
+            "t": "Price",
             "meta": {},
             "date": self.get_date_value(),
-            "account": self.account_field.value.strip(),
-            "amount": self.amount_field.widget.value.strip(),
+            "currency": self.currency_field.value.strip(),
+            "amount": self.amount_field.value.strip(),
         }
 
     def clear_form(self):
         """Clear all form data."""
         self.clear_common_fields()
-        self.account_field.clear()
-        self.amount_field.clear()
+        self.currency_field.value = ""
+        self.amount_field.value = ""
     
     def is_form_valid(self) -> bool:
         """Check if form data is valid."""
@@ -120,13 +103,29 @@ class BalanceForm(BaseDirectiveForm, MacOSTabChainMixin, FormValidationMixin):
         errors = []
         
         self.validate_date_field(self.get_date_value(), errors)
-        self.validate_required_field(self.account_field.value, "Account", errors)
-        self.validate_required_field(self.amount_field.widget.value, "Amount", errors)
+        self.validate_required_field(self.currency_field.value, "Currency/commodity", errors)
+        self.validate_required_field(self.amount_field.value, "Price amount", errors)
+        
+        # Additional validation for currency format
+        currency = self.currency_field.value.strip()
+        if currency:
+            # Basic validation - currency should be uppercase letters/numbers
+            if not currency.replace("-", "").replace(".", "").isalnum():
+                errors.append("Currency/commodity should contain only letters, numbers, hyphens, and dots")
+            elif len(currency) < 2 or len(currency) > 10:
+                errors.append("Currency/commodity should be between 2 and 10 characters")
+        
+        # Basic amount validation
+        amount = self.amount_field.value.strip()
+        if amount:
+            # Check if amount contains at least one number and some currency
+            if not any(char.isdigit() for char in amount):
+                errors.append("Price amount must contain numeric value")
         
         return errors
     
     def is_form_empty(self) -> bool:
         """Check if form is empty."""
         return (self.is_common_fields_empty() and 
-                not self.account_field.value.strip() and 
-                not self.amount_field.widget.value.strip())
+                not self.currency_field.value.strip() and 
+                not self.amount_field.value.strip())
