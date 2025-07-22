@@ -384,7 +384,11 @@ class MainState(StateHandler):
             self.app.main_window.toolbar.add(self._quick_mode_command)
             self.app.main_window.toolbar.discard(self._normal_mode_command)
             self.app.commands.discard(self._normal_mode_command)
-
-    def _show_help(self, widget):
-        """Show help dialog."""
-        logger.info("Showing help dialog")
+    
+    def _show_help(self, widget=None, **kwargs):
+        """Show the help window."""
+        logger.info("Showing help window")
+        from beanquick.ui.help_window import show_help_window
+        # Show the manual help topic using the i18n-aware help system
+        # The help system will automatically use the current locale
+        show_help_window(self.app, topic="manual.md")
