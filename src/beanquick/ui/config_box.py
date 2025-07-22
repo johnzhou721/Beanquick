@@ -216,13 +216,13 @@ class ConfigBox(toga.Box):
         
         # Title and description
         title_label = toga.Label(
-            "Command Templates",
+            "Templates",
             style=Pack(font_size=16, font_weight="bold", margin_bottom=10)
         )
         templates_box.add(title_label)
         
         desc_label = toga.Label(
-            "Define reusable command templates for quick entry:",
+            "Define reusable templates for quick entry:",
             style=Pack(margin_bottom=15, color="#666666")
         )
         templates_box.add(desc_label)
@@ -659,7 +659,7 @@ class ConfigBox(toga.Box):
                     if alias and account:  # Only add non-empty pairs
                         config["aliases"][alias] = account
             
-            # Collect command templates
+            # Collect templates
             config["command_templates"] = {}
             if "command_templates" in self.config_widgets:
                 for item in self.config_widgets["command_templates"]:

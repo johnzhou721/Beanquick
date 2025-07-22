@@ -59,7 +59,8 @@ class BeanquickProcessor:
         try:
             return self.template_renderer.render(
                 template_config=template_config, 
-                params=cmd.params
+                params=cmd.params,
+                named_params=cmd.named_params
             )
         except ValueError as e:
             # Catch and re-raise errors from renderer with additional context

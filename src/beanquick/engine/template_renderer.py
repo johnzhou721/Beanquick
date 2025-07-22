@@ -7,7 +7,7 @@ from jinja2 import Environment, exceptions
 
 class TemplateRenderer:
     """
-    Use Jinja2 engine to render command templates.
+    Use Jinja2 engine to render templates.
     Follow the "merge and override" strategy to build the rendering context.
     """
 
@@ -18,13 +18,14 @@ class TemplateRenderer:
             lstrip_blocks=True,
         )
 
-    def render(self, template_config: Dict[str, Any], params: List[str | float]) -> str:
+    def render(self, template_config: Dict[str, Any], params: List[str | float], named_params: Dict[str, str | float] | None = None) -> str:
         """
         Renders the final Beancount transaction string based on template configuration and user parameters.
 
         Args:
             template_config: Configuration dictionary for a single command
             params: List of user input parameters.
+            named_params: Dictionary of named parameters from user input.
 
         Returns:
             The rendered string.
@@ -46,13 +47,17 @@ class TemplateRenderer:
         # 2. Define system built-in variables
         system_vars = {
             'datetime': datetime,
-            'date': datetime.date.today().isoformat(),
+            'today': datetime.date.today().isoformat(),
             'yesterday': (datetime.date.today() - datetime.timedelta(days=1)).isoformat(),
             'args': params,
         }
 
-        # 3. Merge context, ensuring system variables override user-defined variables with the same name
-        final_context = {**user_defaults, **system_vars}
+        # 3. Merge context: user defaults < named params < system variables
+        # This allows named params to override defaults, but system vars always take precedence
+        final_context = {**user_defaults}
+        if named_params:
+            final_context.update(named_params)
+        final_context.update(system_vars)
 
         # 4. Render template and handle possible errors
         try:

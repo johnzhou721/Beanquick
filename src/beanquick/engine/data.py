@@ -81,6 +81,7 @@ class BeanquickCommand:
     type: str = "command"
     trigger: str = ""
     params: List[Union[str, float]] = field(default_factory=list)
+    named_params: Dict[str, Union[str, float]] = field(default_factory=dict)
     raw_input: str = ""
 
 # Union type for all possible statement types

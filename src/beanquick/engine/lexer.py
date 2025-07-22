@@ -1,6 +1,7 @@
 import ply.lex as lex
 
 from .helpers import BeanquickIllegalCharError
+from decimal import Decimal
 
 class BeanquickLexer:
     # Reserved keywords
@@ -27,6 +28,7 @@ class BeanquickLexer:
         'CARET',
         'SLASH_COMMAND',
         'COMMAND_PARAM',
+        'EQUALS',
     ] + list(reserved.values())
 
     # Define lexer states
@@ -42,11 +44,12 @@ class BeanquickLexer:
     t_CARET          = r'\^'
     t_ignore         = ' \t'  # Ignore spaces and tabs
     t_command_ignore = ' \t'  # Ignore spaces and tabs in command state
+    t_command_EQUALS = r'='
 
     # A regular expression rule with some action code
     def t_AMOUNT(self, t):
         r'[+-]?(?:\d*\.\d+|\d+)'  # Matches +5, -5.0, .5, 5.0, and 5
-        t.value = float(t.value)
+        t.value = Decimal(t.value)
         return t
 
     def t_AT_DATE(self, t):

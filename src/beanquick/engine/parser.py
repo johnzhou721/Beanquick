@@ -192,12 +192,35 @@ class BeanquickParser:
     def p_command(self, p):
         '''command : SLASH_COMMAND optional_command_params'''
         raw_input = f"/{p[1]}"
+        
+        # Separate positional and named parameters
+        positional_params = []
+        named_params = {}
+        
         if p[2]:
-            raw_input += " " + " ".join(str(param) for param in p[2])
+            for param in p[2]:
+                if isinstance(param, tuple) and len(param) == 2:
+                    # Named parameter (key, value)
+                    named_params[param[0]] = param[1]
+                else:
+                    # Positional parameter
+                    positional_params.append(param)
+            
+            # Build raw input string
+            param_strs = []
+            for param in positional_params:
+                param_strs.append(str(param))
+            for key, value in named_params.items():
+                if isinstance(value, str) and ' ' in value:
+                    param_strs.append(f'{key}="{value}"')
+                else:
+                    param_strs.append(f'{key}={value}')
+            raw_input += " " + " ".join(param_strs)
 
         p[0] = BeanquickCommand(
             trigger=p[1],
-            params=p[2] or [],
+            params=positional_params,
+            named_params=named_params,
             raw_input=raw_input
         )
     
@@ -207,12 +230,22 @@ class BeanquickParser:
         p[0] = p[1]
 
     def p_command_params(self, p):
-        '''command_params : command_params COMMAND_PARAM
-                          | COMMAND_PARAM'''
+        '''command_params : command_params command_param
+                          | command_param'''
         if len(p) == 2:
-            p[0]= [p[1]]
+            p[0] = [p[1]]
         else:
             p[0] = p[1] + [p[2]]
+    
+    def p_command_param(self, p):
+        '''command_param : COMMAND_PARAM EQUALS COMMAND_PARAM
+                         | COMMAND_PARAM'''
+        if len(p) == 4:
+            # Named parameter: key=value
+            p[0] = (p[1], p[3])
+        else:
+            # Positional parameter
+            p[0] = p[1]
             
     # --- Empty rule ---
     def p_empty(self, p):
