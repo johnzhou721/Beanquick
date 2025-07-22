@@ -18,7 +18,7 @@ from beanquick.ui.setup_box import SetupBox
 from beanquick.ui.loading_box import LoadingBox
 from beanquick.ui.entry_box import EntryBox
 from beanquick.ui.base_entry_box import EntryMode
-from beanquick.services.ledger_manager import get_ledger_data
+from beanquick.services.ledger_manager import get_ledger_data, open_ledger_handler
 
 if TYPE_CHECKING:
     from beanquick.app import Beanquick
@@ -321,6 +321,9 @@ class MainState(StateHandler):
         self.main_box: EntryBox | None = None
         self._quick_mode_command: toga.Command | None = None
         self._normal_mode_command: toga.Command | None = None
+        self._open_ledger_command: toga.Command | None = None
+        self._help_command: toga.Command | None = None
+        self._preferences_command: toga.Command | None = None
     
     def enter(self, **kwargs) -> toga.Box:
         logger.info("Entering Main State")
@@ -342,36 +345,66 @@ class MainState(StateHandler):
     
     def _setup_commands(self, entry_box: EntryBox):
         """Setup application commands for the main window."""
-        # Add Help command to the menu
+        # Remove commands that attach to the entry box
+        if self._quick_mode_command:
+            self.app.main_window.toolbar.discard(self._quick_mode_command)
+            self.app.commands.discard(self._quick_mode_command)
+        if self._normal_mode_command:
+            self.app.main_window.toolbar.discard(self._normal_mode_command)
+            self.app.commands.discard(self._normal_mode_command)
+
+
         self._quick_mode_command = toga.Command(
             lambda widget: self._toggle_mode(entry_box, widget),
             text='Quick Mode',
-            shortcut=toga.Key.MOD_1 + "/",
+            shortcut=toga.Key.MOD_1 + toga.Key.SLASH,
             group=toga.Group.COMMANDS,
             section=1,
             order=0,
             icon="resources/images/NotoHighVoltage.png",
         )
+        self.app.main_window.toolbar.add(self._quick_mode_command)
+
         self._normal_mode_command = toga.Command(
             lambda widget: self._toggle_mode(entry_box, widget),
             text='Normal Mode',
-            shortcut=toga.Key.MOD_1 + "/",
+            shortcut=toga.Key.MOD_1 + toga.Key.SLASH,
             group=toga.Group.COMMANDS,
             section=1,
             order=0,
             icon="resources/images/NotoMemo.png",
         )
-        help_command = toga.Command(
-            self._show_help,
-            text='Help',
-            group=toga.Group.HELP,  # Standard Help group
-            section=1,
-            icon="resources/images/NotoRingBuoy.png",
-        )
-        preferences_command = toga.Command.standard(self.app, toga.Command.PREFERENCES)
-        self.app.commands.add(preferences_command)
-        self.app.main_window.toolbar.add(self._quick_mode_command, help_command)
-        
+
+        # Global commands
+        # Open ledger command
+        if not self._open_ledger_command:
+            self._open_ledger_command = toga.Command(
+                self.handle_open_ledger,
+                text='Open Ledger...',
+                shortcut=toga.Key.MOD_1 + toga.Key.O,
+                group=toga.Group.FILE,
+                section=1,
+                order=1,
+            )
+            self.app.commands.add(self._open_ledger_command)
+
+        # Help command
+        if not self._help_command:
+            self._help_command = toga.Command(
+                self._show_help,
+                text='Help',
+                group=toga.Group.HELP,  # Standard Help group
+                section=1,
+                icon="resources/images/NotoRingBuoy.png",
+            )
+            self.app.commands.add(self._help_command)
+            self.app.main_window.toolbar.add(self._help_command)
+
+        # Preferences command
+        if not self._preferences_command:
+            self._preferences_command = toga.Command.standard(self.app, toga.Command.PREFERENCES)
+            self.app.commands.add(self._preferences_command)
+
     def _toggle_mode(self, entry_box: EntryBox, widget):
         """Switch to quick entry mode in the main application."""
         logger.info("Switching to quick entry mode")
@@ -385,6 +418,18 @@ class MainState(StateHandler):
             self.app.main_window.toolbar.discard(self._normal_mode_command)
             self.app.commands.discard(self._normal_mode_command)
     
+    def handle_open_ledger(self, command, **kwargs):
+        """Handles the 'Open Ledger...' command."""
+        task = asyncio.create_task(open_ledger_handler(self.app))
+        def on_task_done(task):
+            result = task.result()
+            if result:
+                logger.info(f"Opened ledger file: {result}")
+                self.app.state_manager.transition_to(AppState.LOADING_MAIN, ledger_file_path=result)
+            else:
+                logger.warning("No ledger file selected.")
+        task.add_done_callback(on_task_done)
+
     def _show_help(self, widget=None, **kwargs):
         """Show the help window."""
         logger.info("Showing help window")

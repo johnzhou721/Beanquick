@@ -116,8 +116,6 @@ def validate_ledger_file(app_instance, ledger_file_path: Path) -> bool:
     # Add the selected file to the config, it will also set the active_beancount_file if applicable
     if app_instance.config.add_beancount_file(ledger_file_path, set_active=True):
         logger.info(f"Ledger file added to config and set as active: {ledger_file_path}")
-        app_instance.update_open_recent_menu('validate_ledger_file')
-        app_instance._synchronize_managed_ledgers()
         return True
     else:
         logger.error(f"Failed to add beancount file to config: {ledger_file_path}")
@@ -170,6 +168,7 @@ async def open_ledger_handler(app_instance) -> str | None:
             return
 
     except Exception as e:
+        logger.error(f"Error during ledger file selection: {e}")
         await app_instance.main_window.dialog(
             toga.ErrorDialog("Error", "Unable to open file selection dialog.")
         )
