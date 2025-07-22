@@ -23,7 +23,17 @@ test_sources = [
 ]
 
 requires = [
+    "Babel",
+    "beancount>=3.1.0",
+    "beangulp",
+    "beanquery",
+    "Jinja2",
+    "mistune>=3.0.0",
+    "ply",
+    "pytz",
+    "PyYAML",
     "rapidfuzz",
+    "watchfiles",
 ]
 test_requires = [
     "pytest",
