@@ -232,9 +232,15 @@ class BeanquickIntegration:
             "aliases": {
                 # Common asset accounts
                 "cash": "Assets:Cash",
+                "coffee": "Expenses:Food:Coffee"
             },
             "command_templates": {
                 # Templates for common transactions
+                "coffee": {
+                    "template": """{{ today }} * "morning coffee"
+    Assets:Cash           -{{ args[0] }} USD
+    Expenses:Food:Coffee   {{ args[0] }} USD"""
+                }
             }
         }
     
