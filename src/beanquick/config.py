@@ -9,9 +9,10 @@ from pathlib import Path
 from typing import Any
 
 
-CONFIG_FILENAME = "app_settings.yaml" 
+CONFIG_FILENAME = "app_settings.yaml"
 KEY_FIRST_RUN_COMPLETE = "first_run_complete"
 KEY_IS_SETUP_COMPLETE = "is_setup_complete"
+KEY_USER_LOCALE = "user_locale"
 KEY_BEANCOUNT_FILES = "beancount_files"
 KEY_ACTIVE_BEANCOUNT_FILE = "active_beancount_file"
 
@@ -32,6 +33,7 @@ class AppConfig:
         return {
             KEY_FIRST_RUN_COMPLETE: False,
             KEY_BEANCOUNT_FILES: [],
+            KEY_USER_LOCALE: None,
             KEY_ACTIVE_BEANCOUNT_FILE: None,
         }
 
@@ -126,6 +128,19 @@ class AppConfig:
         """Set the setup completion status."""
         self.set_setting(KEY_IS_SETUP_COMPLETE, bool(value), auto_save=True)
     
+    @property
+    def user_locale(self) -> str | None:
+        loc = self.get_setting(KEY_USER_LOCALE)
+        return loc if isinstance(loc, str) else None # Ensure correct type
+
+    @user_locale.setter
+    def user_locale(self, value: str | None):
+         # Ensure value is string or None before setting
+        valid_value = str(value) if value is not None else None
+        # Only set if the value actually changes
+        if self.get_setting(KEY_USER_LOCALE) != valid_value:
+            self.set_setting(KEY_USER_LOCALE, valid_value, auto_save=True)
+
     @property
     def beancount_files(self) -> list[str]:
         """Get the list of Beancount files."""

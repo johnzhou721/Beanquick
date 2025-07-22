@@ -16,13 +16,18 @@ import toga
 from beanquick.core import BeanquickLedger
 from beanquick.services.logging import get_logger, setup_logging
 from beanquick.services.state_manager import StateManager
+from beanquick.services.locale_service import LocaleService
 from beanquick.config import AppConfig
+from beanquick.toga_babel import _, TogaBabel
+from beanquick.constants import DEFAULT_USER_LOCALE
+
 
 if TYPE_CHECKING:
     from beanquick.services.ledger_manager import LedgerData
 
 
 logger = get_logger()
+babel = TogaBabel()
 
 class Beanquick(toga.App):
     def __init__(self, formal_name="Beanquick", app_id="com.twobitsware.beanquick", **kwargs):
@@ -52,6 +57,18 @@ class Beanquick(toga.App):
         except Exception as e:
             logger.error(f"Unexpected error during logging setup: {e}", exc_info=True)
             logging.basicConfig(level=logging.INFO)
+        
+        # Initialize LocaleService
+        self.locale_service = LocaleService(self.config, logger)
+
+        # Setting up i18n/l10n with Babel
+        babel.init_app(
+            self,
+            default_locale=DEFAULT_USER_LOCALE,
+            default_timezone='UTC',
+            translation_directories='translations',
+            locale_selector=self.locale_service.locale_selector_handler
+        )
 
     def startup(self):
         """Construct and show the Toga application.
