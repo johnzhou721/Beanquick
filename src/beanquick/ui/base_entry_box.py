@@ -21,7 +21,7 @@ from beanquick.services.account_completer import AccountCompleter
 from beanquick.serialisation import deserialise
 from beanquick.beans.str import to_string
 from beanquick.helpers import BeanquickError
-from beanquick.ui.syntax_highlighter import BeanquickSyntaxHighlighter
+from beanquick.util.syntax_highlighter import BeanquickSyntaxHighlighter
 
 if TYPE_CHECKING:
     from beanquick.app import Beanquick
