@@ -90,6 +90,11 @@ class Beanquick(toga.App):
         from beanquick.ui.preferences_window import show_preferences_window
         show_preferences_window(self)
 
+    def about(self, widget=None, **kwargs):
+        logger.info("Showing settings window")
+        from beanquick.ui.about_window import show_about_window
+        show_about_window(self)
+        
 
 def main():
     return Beanquick()
