@@ -19,6 +19,7 @@ from beanquick.ui.loading_box import LoadingBox
 from beanquick.ui.entry_box import EntryBox
 from beanquick.ui.base_entry_box import EntryMode
 from beanquick.services.ledger_manager import get_ledger_data, open_ledger_handler
+from beanquick.services import get_sandbox_service
 
 if TYPE_CHECKING:
     from beanquick.app import Beanquick
@@ -77,13 +78,15 @@ class StateManager:
             AppState.SHOWING_WELCOME: { AppState.SHOWING_SETUP, AppState.ERROR },
             AppState.SHOWING_SETUP: { AppState.LOADING_MAIN, AppState.ERROR },
             AppState.LOADING_MAIN: { AppState.SHOWING_MAIN, AppState.ERROR },
-            AppState.SHOWING_MAIN: { AppState.LOADING_MAIN, AppState.ERROR },
+            AppState.SHOWING_MAIN: {
+                AppState.LOADING_MAIN, AppState.SHOWING_SETUP,
+                AppState.ERROR
+            },
             # Error state can transition to any state except itself to allow recovery
             AppState.ERROR: {
                 AppState.SHOWING_WELCOME, AppState.SHOWING_SETUP
             }
         }
-
 
     def initialize_app_state(self) -> None:
         """Initialize the application state based on the app configuration."""
@@ -93,12 +96,22 @@ class StateManager:
         elif not self.app.config.is_setup_complete:
             self.transition_to(AppState.SHOWING_SETUP)
         else:
-            # If first run and setup are complete, transition to loading main state
+            # If first run and setup are complete, try to restore from bookmark first (macOS only)
             active_file = self.app.config.active_beancount_file
+            
+            # Only try bookmark restoration on macOS
+            sandbox_service = get_sandbox_service()
+            if sandbox_service.is_supported():
+                restored_path = sandbox_service.try_restore_ledger_access()
+                if restored_path:
+                    # Update config with restored path
+                    self.app.config.add_beancount_file(str(restored_path), set_active=True)
+                    active_file = str(restored_path)
+            
             if active_file and Path(active_file).exists():
                 logger.info(f"Active Beancount file found: {active_file}")
                 self.transition_to(AppState.LOADING_MAIN, ledger_file_path=active_file)
-            elif active_file:  # File path exists in config but file itself doesn't
+            elif active_file:  # File path exists but file itself doesn't
                 logger.warning(f"Active Beancount file not found: {active_file}")
                 self.app.config.remove_beancount_file(active_file, update_active=True)
                 self.transition_to(AppState.SHOWING_SETUP, error_message=f"The last used ledger file '{Path(active_file).name}' was not found.")
@@ -219,6 +232,7 @@ class SetupState(StateHandler):
         setup_box = SetupBox(
             on_ledger_selected=self.setup_complete_handler,
         )
+        
         return setup_box
     
     def get_title(self) -> str:
@@ -419,6 +433,10 @@ class MainState(StateHandler):
             self.app.commands.discard(self._normal_mode_command)
     
     def handle_open_ledger(self, command, **kwargs):
+        """Handles the 'Open Ledger...' command."""
+        self.app.state_manager.transition_to(AppState.SHOWING_SETUP, mode="open")
+
+    def handle_open_ledger_(self, command, **kwargs):
         """Handles the 'Open Ledger...' command."""
         task = asyncio.create_task(open_ledger_handler(self.app))
         def on_task_done(task):

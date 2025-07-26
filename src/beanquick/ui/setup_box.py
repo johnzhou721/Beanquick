@@ -4,6 +4,7 @@ __copyright__ = "Copyright (C) 2025 TwoBitsWare"
 __license__ = "GNU GPLv2"
 
 import os
+import logging
 from pathlib import Path
 from typing import Protocol
 
@@ -12,11 +13,16 @@ from toga.style import Pack
 from toga.style.pack import COLUMN, ROW, CENTER, BOLD, START  # type: ignore
 from toga.colors import DODGERBLUE, DIMGRAY
 
+from beanquick.services import get_sandbox_service
+
+logger = logging.getLogger(__name__)
+
 
 LARGE_MARGIN = 20
 DEFAULT_MARGIN = 8
 TITLE_FONT_SIZE = 36
 DESCRIPTION_FONT_SIZE = 10
+
 
 class LedgerCallback(Protocol):
     def __call__(self, ledger_file_path: str) -> None: ...
@@ -38,6 +44,7 @@ class SetupBox(toga.Box):
         super().__init__(style=Pack(direction=ROW, align_items=START, margin=LARGE_MARGIN))
 
         self.on_ledger_selected = on_ledger_selected
+        self.sandbox_service = get_sandbox_service()
 
         self._build_ui()
 
@@ -145,17 +152,15 @@ class SetupBox(toga.Box):
             )
         )
 
-    # --- Interaction Handlers ---
     async def create_ledger_handler(self, widget, **kwargs):
         """Handles the 'Create New Ledger' button press."""
         try:
-            file_path_obj = await self.window.dialog(
-                toga.SaveFileDialog(
-                    title="Create New Ledger",
-                    suggested_filename="ledger.beancount",
-                    file_types=['beancount', 'bean']
-                )
+            save_file_dialog = toga.SaveFileDialog(
+                title="Create New Ledger",
+                suggested_filename="ledger.beancount",
+                file_types=['beancount', 'bean']
             )
+            file_path_obj = await self.window.dialog(save_file_dialog)
 
             if file_path_obj is not None:
                 if file_path_obj.suffix.lower()[1:] not in ['beancount', 'bean']:
@@ -172,7 +177,17 @@ class SetupBox(toga.Box):
                     await self._show_error_with_details("Unable to create file", str(e))
                 except Exception as e:
                     await self._show_error_with_details("An unexpected error occurred while creating the file",  str(e))
-
+                
+                # macOS sandbox support
+                if self.sandbox_service.is_supported():
+                    try:
+                        # Get the selected file's URL from the native dialog
+                        selected_url = save_file_dialog._impl.selected_path()  # This returns NSURL
+                        if selected_url:
+                            self.sandbox_service.create_bookmark_for_file_selection(selected_url, file_path_obj)
+                    except Exception as e:
+                        # If bookmark creation fails, still proceed with the callback
+                        logger.warning("Failed to create security-scoped bookmark: %s", e)
             else:
                 # User cancelled the dialog
                 # Stay on the setup page
@@ -180,33 +195,38 @@ class SetupBox(toga.Box):
 
         except Exception as e:
             # Catch potential errors with the dialog itself
-            await self._show_error_with_details(f"Error during ledger file creation", str(e))
+            await self._show_error_with_details("Error during ledger file creation", str(e))
 
     async def open_ledger_handler(self, widget, **kwargs):
         """Handles the 'Open Existing Ledger' button press."""
-        try:
-           # Suggest Documents folder as default, fallback to home
-            initial_dir = Path(os.path.expanduser("~/Documents"))
-            if not initial_dir.is_dir():
-                 initial_dir = Path.home()
-
-            file_path_obj = await self.window.dialog(
-                toga.OpenFileDialog(
-                    title="Open Existing Ledger",
-                    file_types=["beancount", "bean"],
-                    multiple_select=False,
-                    initial_directory=initial_dir
-                )
+        try: 
+            open_file_dialog = toga.OpenFileDialog(
+                title="Open Existing Ledger",
+                file_types=["beancount", "bean"],
+                multiple_select=False,
+                # initial_directory=initial_dir
             )
+            file_path_obj = await self.window.dialog(open_file_dialog)
 
             if file_path_obj is not None:
                 # Basic validation (check if file exists and suffix)
                 if not file_path_obj.is_file():
-                     await self._show_error("The selected path is not a valid file.")
-                     return # Stay on setup page
+                        await self._show_error("The selected path is not a valid file.")
+                        return # Stay on setup page
                 if file_path_obj.suffix.lower()[1:] not in ['beancount', 'bean']:
-                     await self._show_error("Please select a .beancount file.")
-                     return # Stay on setup page
+                        await self._show_error("Please select a .beancount file.")
+                        return # Stay on setup page
+                
+                # Get parent directory's native URL if on macOS
+                if self.sandbox_service.is_supported() and hasattr(open_file_dialog, '_impl') and hasattr(open_file_dialog._impl, 'native'):
+                    try:
+                        # Get the selected file's URL from the native dialog
+                        selected_url = open_file_dialog._impl.selected_path()  # This returns NSURL
+                        if selected_url:
+                            self.sandbox_service.create_bookmark_for_file_selection(selected_url, file_path_obj)
+                    except Exception as e:
+                        # If bookmark creation fails, still proceed with the callback
+                        logger.warning("Failed to create security-scoped bookmark: %s", e)
 
                 # Further validation (e.g., read permissions) could be done here
                 # or preferably by the part of the app that loads the ledger.
