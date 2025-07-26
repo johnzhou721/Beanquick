@@ -107,68 +107,68 @@ def get_ledger_data(ledger: BeanquickLedger) -> LedgerData:
         # ledger.extensions.extension_details,
         ledger.misc.sidebar_links,
     )
-def validate_ledger_file(app_instance, ledger_file_path: Path) -> bool:
-    """Validate the ledger file."""
-    if not ledger_file_path or not ledger_file_path.exists() or not ledger_file_path.is_file():
-        logger.warning(f"Invalid ledger file path provided: {ledger_file_path}")
-        return False
+
+
+async def open_ledger_dialog(window, app_instance) -> str | None:
+    """
+    Unified function to open a ledger file dialog.
     
-    # Add the selected file to the config, it will also set the active_beancount_file if applicable
-    if app_instance.config.add_beancount_file(ledger_file_path, set_active=True):
-        logger.info(f"Ledger file added to config and set as active: {ledger_file_path}")
-        return True
-    else:
-        logger.error(f"Failed to add beancount file to config: {ledger_file_path}")
-        return False
-
-async def open_ledger_handler(app_instance) -> str | None:
-    """Open an existing ledger file."""
+    Args:
+        window: The window to show dialogs on
+        app_instance: app instance for config updates
+        
+    Returns:
+        Path str of selected file, or None if cancelled/error
+    """
+    from beanquick.services import get_sandbox_service
+    
     try:
-        # Suggest Documents folder as default, fallback to home
-        # TODO: Implement a platform-agnostic way to get the user's documents folder
-        initial_dir = Path(os.path.expanduser("~/Documents"))
-        if not initial_dir.is_dir():
-                initial_dir = Path.home()
+        sandbox_service = get_sandbox_service()
 
-        file_path_obj = await app_instance.main_window.dialog(
-            toga.OpenFileDialog(
-                title="Open Existing Ledger",
-                file_types=["beancount", "bean"],
-                multiple_select=False,
-                initial_directory=initial_dir
-            )
+        open_file_dialog = toga.OpenFileDialog(
+            title="Open Existing Ledger",
+            file_types=["beancount", "bean"],
+            multiple_select=False,
         )
+        file_path_obj = await window.dialog(open_file_dialog)
 
         if file_path_obj is not None:
             # Basic validation (check if file exists and suffix)
             if not file_path_obj.is_file():
-                await app_instance.main_window.dialog(
-                    toga.ErrorDialog("Error", "Please select a valid file path.")
-                )
-                return
+                error_msg = "Please select a valid file path."
+                await window.dialog(toga.ErrorDialog("Error", error_msg))
+                return None
+                
             if file_path_obj.suffix.lower()[1:] not in ['beancount', 'bean']:
-                    await app_instance.main_window.dialog(
-                        toga.ErrorDialog("Error", "Please select a .beancount file.")
-                    )
-                    return
-            # Further validation (e.g., read permissions) could be done here
-            # or preferably by the part of the app that loads the ledger.
-            if not validate_ledger_file(app_instance, file_path_obj):
-                await app_instance.main_window.dialog(
-                    toga.ErrorDialog("Error", "Unable to validate the selected ledger file.")
-                )
-                return
+                error_msg = "Please select a .beancount file."
+                await window.dialog(toga.ErrorDialog("Error", error_msg))
+                return None
             
-            active_file = app_instance.config.active_beancount_file
-            if active_file:
-                logger.info(f"Transitioning to load dashboard for: {active_file}")
-                return active_file
+            # Handle sandbox bookmarks for macOS
+            if sandbox_service and sandbox_service.is_supported() and hasattr(open_file_dialog, '_impl'):
+                try:
+                    # Get the selected file's URL from the native dialog
+                    selected_url = open_file_dialog._impl.selected_path()  # This returns NSURL
+                    if selected_url:
+                        sandbox_service.create_bookmark_for_file_selection(selected_url, file_path_obj)
+                except Exception as e:
+                    # If bookmark creation fails, still proceed
+                    logger.warning("Failed to create security-scoped bookmark: %s", e)
+            
+            ledger_file_path = str(file_path_obj)
+
+            # Add the selected file to the config
+            # It will also set the active_beancount_file if applicable
+            if not app_instance.config.add_beancount_file(ledger_file_path, set_active=True):
+                logger.error(f"Failed to add beancount file to config: {ledger_file_path}")
+
+            return ledger_file_path
         else:
             # User cancelled the dialog
-            return
+            return None
 
     except Exception as e:
+        error_msg = f"Unable to open file selection dialog: {str(e)}"
         logger.error(f"Error during ledger file selection: {e}")
-        await app_instance.main_window.dialog(
-            toga.ErrorDialog("Error", "Unable to open file selection dialog.")
-        )
+        await window.dialog(toga.ErrorDialog("Error", "Unable to open file selection dialog."))
+        return None

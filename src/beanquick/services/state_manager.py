@@ -18,7 +18,7 @@ from beanquick.ui.setup_box import SetupBox
 from beanquick.ui.loading_box import LoadingBox
 from beanquick.ui.entry_box import EntryBox
 from beanquick.ui.base_entry_box import EntryMode
-from beanquick.services.ledger_manager import get_ledger_data, open_ledger_handler
+from beanquick.services.ledger_manager import get_ledger_data, open_ledger_dialog
 from beanquick.services import get_sandbox_service
 
 if TYPE_CHECKING:
@@ -230,6 +230,7 @@ class SetupState(StateHandler):
         logger.info("Entering Setup State")
         # Create and return the setup UI
         setup_box = SetupBox(
+            app_instance=self.app,
             on_ledger_selected=self.setup_complete_handler,
         )
         
@@ -431,14 +432,10 @@ class MainState(StateHandler):
             self.app.main_window.toolbar.add(self._quick_mode_command)
             self.app.main_window.toolbar.discard(self._normal_mode_command)
             self.app.commands.discard(self._normal_mode_command)
-    
+
     def handle_open_ledger(self, command, **kwargs):
         """Handles the 'Open Ledger...' command."""
-        self.app.state_manager.transition_to(AppState.SHOWING_SETUP, mode="open")
-
-    def handle_open_ledger_(self, command, **kwargs):
-        """Handles the 'Open Ledger...' command."""
-        task = asyncio.create_task(open_ledger_handler(self.app))
+        task = asyncio.create_task(open_ledger_dialog(self.app.main_window, self.app))
         def on_task_done(task):
             result = task.result()
             if result:

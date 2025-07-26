@@ -32,7 +32,7 @@ class SetupBox(toga.Box):
     A Toga Box representing the initial setup screen where users choose
     to create a new Beancount ledger or connect to an existing one.
     """
-    def __init__(self, on_ledger_selected: LedgerCallback):
+    def __init__(self, app_instance, on_ledger_selected: LedgerCallback):
         """
         Initializes the SetupBox.
 
@@ -43,6 +43,7 @@ class SetupBox(toga.Box):
         """
         super().__init__(style=Pack(direction=ROW, align_items=START, margin=LARGE_MARGIN))
 
+        self.app_instance = app_instance
         self.on_ledger_selected = on_ledger_selected
         self.sandbox_service = get_sandbox_service()
 
@@ -199,44 +200,7 @@ class SetupBox(toga.Box):
 
     async def open_ledger_handler(self, widget, **kwargs):
         """Handles the 'Open Existing Ledger' button press."""
-        try: 
-            open_file_dialog = toga.OpenFileDialog(
-                title="Open Existing Ledger",
-                file_types=["beancount", "bean"],
-                multiple_select=False,
-                # initial_directory=initial_dir
-            )
-            file_path_obj = await self.window.dialog(open_file_dialog)
-
-            if file_path_obj is not None:
-                # Basic validation (check if file exists and suffix)
-                if not file_path_obj.is_file():
-                        await self._show_error("The selected path is not a valid file.")
-                        return # Stay on setup page
-                if file_path_obj.suffix.lower()[1:] not in ['beancount', 'bean']:
-                        await self._show_error("Please select a .beancount file.")
-                        return # Stay on setup page
-                
-                # Get parent directory's native URL if on macOS
-                if self.sandbox_service.is_supported() and hasattr(open_file_dialog, '_impl') and hasattr(open_file_dialog._impl, 'native'):
-                    try:
-                        # Get the selected file's URL from the native dialog
-                        selected_url = open_file_dialog._impl.selected_path()  # This returns NSURL
-                        if selected_url:
-                            self.sandbox_service.create_bookmark_for_file_selection(selected_url, file_path_obj)
-                    except Exception as e:
-                        # If bookmark creation fails, still proceed with the callback
-                        logger.warning("Failed to create security-scoped bookmark: %s", e)
-
-                # Further validation (e.g., read permissions) could be done here
-                # or preferably by the part of the app that loads the ledger.
-                self.on_ledger_selected(file_path_obj) # Notify the app
-
-            else:
-                # User cancelled the dialog
-                # Stay on the setup page
-                pass
-
-        except Exception as e:
-            # Catch potential errors with the dialog itself
-            await self._show_error_with_details("Unable to open file selection dialog.", str(e))
+        from beanquick.services.ledger_manager import open_ledger_dialog
+        
+        ledger_file_path = await open_ledger_dialog(self.window, self.app_instance)
+        self.on_ledger_selected(ledger_file_path)
