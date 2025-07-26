@@ -75,7 +75,7 @@ class Beanquick(toga.App):
         """
         logger.info(f"{self.formal_name} starting up...")
 
-        # TODO: Set size and position based on user settings or CONSTANTS
+        # Create main window with default size (will be overridden by saved state if available)
         self.main_window = toga.MainWindow(title=self.formal_name, size=(740, 600))
 
         # Determine initial state and navigate there

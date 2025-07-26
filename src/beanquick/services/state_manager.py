@@ -20,6 +20,7 @@ from beanquick.ui.entry_box import EntryBox
 from beanquick.ui.base_entry_box import EntryMode
 from beanquick.services.ledger_manager import get_ledger_data, open_ledger_dialog
 from beanquick.services import get_sandbox_service
+from beanquick.services.window_state_service import WindowStateService
 
 if TYPE_CHECKING:
     from beanquick.app import Beanquick
@@ -68,6 +69,7 @@ class StateManager:
             # Add other state handlers as needed
         }
         self._active_handler: StateHandler | None = None
+        self.window_state_service = WindowStateService(app)
 
         # Valid state transitions
         self.valid_transitions: dict[AppState, set[AppState]] = {
@@ -91,6 +93,10 @@ class StateManager:
     def initialize_app_state(self) -> None:
         """Initialize the application state based on the app configuration."""
         logger.info("Initializing application state...")
+        
+        # Initialize window state persistence
+        self.window_state_service.initialize()
+        
         if not self.app.config.is_first_run_complete:
             self.transition_to(AppState.SHOWING_WELCOME)
         elif not self.app.config.is_setup_complete:
@@ -165,6 +171,9 @@ class StateManager:
                 if content.current_form:
                     # If the content is an EntryBox, focus the first input field
                     content.current_form.focus_first_input()
+
+            # Save window state on state transitions (user interaction indicator)
+            self.window_state_service.on_state_transition()
 
             logger.info(f"Transitioned to state {new_state} with handler {handler.__class__.__name__}")
         except Exception as e:

@@ -15,6 +15,7 @@ KEY_IS_SETUP_COMPLETE = "is_setup_complete"
 KEY_USER_LOCALE = "user_locale"
 KEY_BEANCOUNT_FILES = "beancount_files"
 KEY_ACTIVE_BEANCOUNT_FILE = "active_beancount_file"
+KEY_WINDOW_STATE = "window_state"
 
 logger = logging.getLogger(__name__)
 
@@ -263,4 +264,31 @@ class AppConfig:
             return True
         logger.warning(f"Attempting to remove non-existent Beancount file: {abs_file_path}")
         return False
+
+    def get_window_state(self) -> dict[str, int] | None:
+        """Get the saved window state (position and size)."""
+        window_state = self.get_setting(KEY_WINDOW_STATE)
+        if isinstance(window_state, dict):
+            # Validate that all required keys are present and are floats
+            required_keys = ['x', 'y', 'width', 'height']
+            if all(key in window_state and isinstance(window_state[key], float) for key in required_keys):
+                return window_state
+        return None
+
+    def set_window_state(self, window_state: dict[str, int]) -> None:
+        """Save the current window state (position and size)."""
+        if not isinstance(window_state, dict):
+            logger.warning("Invalid window state format, expected dict")
+            return
+        
+        # Validate required keys
+        required_keys = ['x', 'y', 'width', 'height']
+        if not all(key in window_state and isinstance(window_state[key], float) for key in required_keys):
+            logger.warning("Invalid window state format, missing or invalid keys")
+            return
+        
+        # Only save if the state has actually changed
+        current_state = self.get_setting(KEY_WINDOW_STATE)
+        if current_state != window_state:
+            self.set_setting(KEY_WINDOW_STATE, window_state, auto_save=True)
         
