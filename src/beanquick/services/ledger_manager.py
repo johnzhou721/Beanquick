@@ -175,10 +175,8 @@ async def create_ledger_dialog(window, app_instance) -> str | None:
                 
                 ledger_file_path = str(file_path_obj)
 
-                # Add the created file to the config
-                # It will also set the active_beancount_file if applicable
-                if not app_instance.config.add_beancount_file(ledger_file_path, set_active=True):
-                    logger.error(f"Failed to add beancount file to config: {ledger_file_path}")
+                # Add the selected file to the config
+                app_instance.config.active_beancount_file = ledger_file_path
 
                 return ledger_file_path
 
@@ -272,9 +270,7 @@ async def open_ledger_dialog(window, app_instance) -> str | None:
             ledger_file_path = str(file_path_obj)
 
             # Add the selected file to the config
-            # It will also set the active_beancount_file if applicable
-            if not app_instance.config.add_beancount_file(ledger_file_path, set_active=True):
-                logger.error(f"Failed to add beancount file to config: {ledger_file_path}")
+            app_instance.config.active_beancount_file = ledger_file_path
 
             return ledger_file_path
         else:

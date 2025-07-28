@@ -110,8 +110,6 @@ class StateManager:
             if sandbox_service.is_supported():
                 restored_path = sandbox_service.try_restore_ledger_access()
                 if restored_path:
-                    # Update config with restored path
-                    self.app.config.add_beancount_file(str(restored_path), set_active=True)
                     active_file = str(restored_path)
             
             if active_file and Path(active_file).exists():
@@ -119,7 +117,7 @@ class StateManager:
                 self.transition_to(AppState.LOADING_MAIN, ledger_file_path=active_file)
             elif active_file:  # File path exists but file itself doesn't
                 logger.warning(f"Active Beancount file not found: {active_file}")
-                self.app.config.remove_beancount_file(active_file, update_active=True)
+                self.app.config.active_beancount_file = None
                 self.transition_to(AppState.SHOWING_SETUP, error_message=f"The last used ledger file '{Path(active_file).name}' was not found.")
             else:
                 logger.warning("No active Beancount file found, transitioning to setup.")
@@ -251,17 +249,19 @@ class SetupState(StateHandler):
     def setup_complete_handler(self, ledger_file_path: str):
         """Handler after the setup page is completed"""
         logger.info(f"Setup page completed, ledger file path: {ledger_file_path}")
-        # Add the selected ledger file to the config, it will also set the `active_beancount_file`
-        if self.app.config.add_beancount_file(ledger_file_path, set_active=True):
-            # Mark setup as complete
-            self.app.config.is_setup_complete = True
-            
-            # Transition to main app state
-            active_file = self.app.config.active_beancount_file
-            if active_file:
-                logger.info(f"Active Beancount file set to: {active_file}")
-                # Transition to loading main state
-                self.app.state_manager.transition_to(AppState.LOADING_MAIN, ledger_file_path=active_file)
+        
+        # Add the selected ledger file to the config
+        self.app.config.active_beancount_file = ledger_file_path
+
+        # Mark setup as complete
+        self.app.config.is_setup_complete = True
+        
+        # Transition to main app state
+        active_file = self.app.config.active_beancount_file
+        if active_file:
+            logger.info(f"Active Beancount file set to: {active_file}")
+            # Transition to loading main state
+            self.app.state_manager.transition_to(AppState.LOADING_MAIN, ledger_file_path=active_file)
 
 class LoadingMainState(StateHandler):
     """State handler for loading the main application view."""
