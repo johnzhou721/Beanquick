@@ -18,7 +18,7 @@ from beanquick.ui.setup_box import SetupBox
 from beanquick.ui.loading_box import LoadingBox
 from beanquick.ui.entry_box import EntryBox
 from beanquick.ui.base_entry_box import EntryMode
-from beanquick.services.ledger_manager import get_ledger_data, open_ledger_dialog
+from beanquick.services.ledger_manager import get_ledger_data, open_ledger_dialog, create_ledger_dialog
 from beanquick.services import get_sandbox_service
 from beanquick.services.window_state_service import WindowStateService
 
@@ -345,6 +345,7 @@ class MainState(StateHandler):
         self.main_box: EntryBox | None = None
         self._quick_mode_command: toga.Command | None = None
         self._normal_mode_command: toga.Command | None = None
+        self._new_ledger_command: toga.Command | None = None
         self._open_ledger_command: toga.Command | None = None
         self._help_command: toga.Command | None = None
         self._preferences_command: toga.Command | None = None
@@ -400,6 +401,18 @@ class MainState(StateHandler):
         )
 
         # Global commands
+        # New ledger command
+        if not self._new_ledger_command:
+            self._new_ledger_command = toga.Command(
+                self.handle_new_ledger,
+                text='New Ledger...',
+                shortcut=toga.Key.MOD_1 + toga.Key.N,
+                group=toga.Group.FILE,
+                section=1,
+                order=0,
+            )
+            self.app.commands.add(self._new_ledger_command)
+
         # Open ledger command
         if not self._open_ledger_command:
             self._open_ledger_command = toga.Command(
@@ -441,6 +454,18 @@ class MainState(StateHandler):
             self.app.main_window.toolbar.add(self._quick_mode_command)
             self.app.main_window.toolbar.discard(self._normal_mode_command)
             self.app.commands.discard(self._normal_mode_command)
+
+    def handle_new_ledger(self, command, **kwargs):
+        """Handles the 'New Ledger...' command."""
+        task = asyncio.create_task(create_ledger_dialog(self.app.main_window, self.app))
+        def on_task_done(task):
+            result = task.result()
+            if result:
+                logger.info(f"Created ledger file: {result}")
+                self.app.state_manager.transition_to(AppState.LOADING_MAIN, ledger_file_path=result)
+            else:
+                logger.warning("No ledger file created.")
+        task.add_done_callback(on_task_done)
 
     def handle_open_ledger(self, command, **kwargs):
         """Handles the 'Open Ledger...' command."""

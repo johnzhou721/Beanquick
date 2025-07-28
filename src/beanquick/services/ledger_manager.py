@@ -109,6 +109,100 @@ def get_ledger_data(ledger: BeanquickLedger) -> LedgerData:
     )
 
 
+async def create_ledger_dialog(window, app_instance) -> str | None:
+    """
+    Unified function to create a new ledger file dialog.
+    
+    Args:
+        window: The window to show dialogs on
+        app_instance: app instance for config updates
+        
+    Returns:
+        Path str of created file, or None if cancelled/error
+    """
+    from beanquick.services import get_sandbox_service
+    
+    try:
+        sandbox_service = get_sandbox_service()
+
+        # Step 1: Select directory first (for macOS sandbox support)
+        select_folder_dialog = toga.SelectFolderDialog(
+            title="Select Folder Containing Your Ledger",
+            multiple_select=False
+        )
+
+        if sys.platform == 'darwin' and hasattr(select_folder_dialog, '_impl'):
+            select_folder_dialog._impl.native.setMessage_("Select Folder for New Ledger")
+
+        folder_path_obj = await window.dialog(select_folder_dialog)
+
+        if folder_path_obj is None:
+            return None # User cancelled the dialog
+
+        save_file_dialog = toga.SaveFileDialog(
+            title="Create New Ledger",
+            suggested_filename="ledger.beancount",
+            file_types=['beancount', 'bean']
+        )
+
+        if sys.platform == 'darwin' and hasattr(save_file_dialog, '_impl'):
+            save_file_dialog._impl.native.setMessage_("Create your new Beancount ledger file")
+
+        file_path_obj = await window.dialog(save_file_dialog)
+
+        if file_path_obj is not None:
+            # Ensure proper file extension
+            if file_path_obj.suffix.lower()[1:] not in ['beancount', 'bean']:
+                file_path_obj = file_path_obj.with_suffix('.beancount')
+
+            try:
+                # Create the file with minimal Beancount structure
+                with open(file_path_obj, 'w', encoding='utf-8') as f:
+                    f.write('option "title" "My Ledger"\n')
+                    f.write('option "operating_currency" "USD"\n\n')
+                    f.write('; Beancount ledger created by Beanquick\n')
+                
+                # Handle sandbox bookmarks for macOS
+                if sandbox_service and sandbox_service.is_supported() and hasattr(select_folder_dialog, '_impl'):
+                    try:
+                        # Get the selected file's URL from the native dialog
+                        folder_url = select_folder_dialog._impl.selected_path()  # This returns NSURL
+                        if folder_url:
+                            sandbox_service.create_bookmark_for_file_selection(folder_url, file_path_obj)
+                    except Exception as e:
+                        # If bookmark creation fails, still proceed
+                        logger.warning("Failed to create security-scoped bookmark: %s", e)
+                
+                ledger_file_path = str(file_path_obj)
+
+                # Add the created file to the config
+                # It will also set the active_beancount_file if applicable
+                if not app_instance.config.add_beancount_file(ledger_file_path, set_active=True):
+                    logger.error(f"Failed to add beancount file to config: {ledger_file_path}")
+
+                return ledger_file_path
+
+            except OSError as e:
+                error_msg = f"Unable to create file: {str(e)}"
+                logger.error(f"Error creating ledger file: {e}")
+                await window.dialog(toga.ErrorDialog("Error", "Unable to create file."))
+                return None
+            except Exception as e:
+                error_msg = f"An unexpected error occurred while creating the file: {str(e)}"
+                logger.error(f"Unexpected error creating ledger file: {e}")
+                await window.dialog(toga.ErrorDialog("Error", "An unexpected error occurred while creating the file."))
+                return None
+        else:
+            # User cancelled the dialog
+            return None
+
+    except Exception as e:
+        error_msg = f"Unable to open file creation dialog: {str(e)}"
+        logger.error(f"Error during ledger file creation: {e}")
+        await window.dialog(toga.ErrorDialog("Error", "Unable to open file creation dialog."))
+        return None
+
+
 async def open_ledger_dialog(window, app_instance) -> str | None:
     """
     Unified function to open a ledger file dialog.
@@ -149,7 +243,7 @@ async def open_ledger_dialog(window, app_instance) -> str | None:
 
         if sys.platform == 'darwin' and hasattr(open_file_dialog, '_impl'):
             open_file_dialog._impl.native.setMessage_("Choose your existing Beancount ledger file")
-            
+
         file_path_obj = await window.dialog(open_file_dialog)
 
         if file_path_obj is not None:

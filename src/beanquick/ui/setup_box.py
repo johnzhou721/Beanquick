@@ -14,6 +14,7 @@ from toga.style.pack import COLUMN, ROW, CENTER, BOLD, START  # type: ignore
 from toga.colors import DODGERBLUE, DIMGRAY
 
 from beanquick.services import get_sandbox_service
+from beanquick.services.ledger_manager import create_ledger_dialog, open_ledger_dialog
 
 logger = logging.getLogger(__name__)
 
@@ -155,52 +156,11 @@ class SetupBox(toga.Box):
 
     async def create_ledger_handler(self, widget, **kwargs):
         """Handles the 'Create New Ledger' button press."""
-        try:
-            save_file_dialog = toga.SaveFileDialog(
-                title="Create New Ledger",
-                suggested_filename="ledger.beancount",
-                file_types=['beancount', 'bean']
-            )
-            file_path_obj = await self.window.dialog(save_file_dialog)
-
-            if file_path_obj is not None:
-                if file_path_obj.suffix.lower()[1:] not in ['beancount', 'bean']:
-                    file_path_obj = file_path_obj.with_suffix('.beancount')
-
-                try:
-                    with open(file_path_obj, 'w', encoding='utf-8') as f:
-                        # TODO: Provide a minimal Beancount structure
-                        f.write('option "title" "My Ledger"\n')
-                        f.write('option "operating_currency" "USD"\n\n')
-                        f.write('; Beancount ledger created by Beanquick\n')
-                    self.on_ledger_selected(file_path_obj)
-                except OSError as e:
-                    await self._show_error_with_details("Unable to create file", str(e))
-                except Exception as e:
-                    await self._show_error_with_details("An unexpected error occurred while creating the file",  str(e))
-                
-                # macOS sandbox support
-                if self.sandbox_service.is_supported():
-                    try:
-                        # Get the selected file's URL from the native dialog
-                        selected_url = save_file_dialog._impl.selected_path()  # This returns NSURL
-                        if selected_url:
-                            self.sandbox_service.create_bookmark_for_file_selection(selected_url, file_path_obj)
-                    except Exception as e:
-                        # If bookmark creation fails, still proceed with the callback
-                        logger.warning("Failed to create security-scoped bookmark: %s", e)
-            else:
-                # User cancelled the dialog
-                # Stay on the setup page
-                pass
-
-        except Exception as e:
-            # Catch potential errors with the dialog itself
-            await self._show_error_with_details("Error during ledger file creation", str(e))
+        ledger_file_path = await create_ledger_dialog(self.window, self.app_instance)
+        if ledger_file_path:
+            self.on_ledger_selected(ledger_file_path)
 
     async def open_ledger_handler(self, widget, **kwargs):
         """Handles the 'Open Existing Ledger' button press."""
-        from beanquick.services.ledger_manager import open_ledger_dialog
-        
         ledger_file_path = await open_ledger_dialog(self.window, self.app_instance)
         self.on_ledger_selected(ledger_file_path)
