@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import os
+import sys
 import logging
 from pathlib import Path
 from dataclasses import dataclass
@@ -125,11 +125,31 @@ async def open_ledger_dialog(window, app_instance) -> str | None:
     try:
         sandbox_service = get_sandbox_service()
 
+        # Step 1: Select directory first (for macOS sandbox support)
+        select_folder_dialog = toga.SelectFolderDialog(
+            title="Select Folder Containing Your Ledger",
+            multiple_select=False
+        )
+
+        if sys.platform == 'darwin' and hasattr(select_folder_dialog, '_impl'):
+            select_folder_dialog._impl.native.setMessage_("Select Folder Containing Your Ledger")
+
+        folder_path_obj = await window.dialog(select_folder_dialog)
+
+        if folder_path_obj is None:
+            return None # User cancelled the dialog
+
+        # Step 2: Select file in the selected directory
         open_file_dialog = toga.OpenFileDialog(
             title="Open Existing Ledger",
             file_types=["beancount", "bean"],
+            initial_directory=folder_path_obj,
             multiple_select=False,
         )
+
+        if sys.platform == 'darwin' and hasattr(open_file_dialog, '_impl'):
+            open_file_dialog._impl.native.setMessage_("Choose your existing Beancount ledger file")
+            
         file_path_obj = await window.dialog(open_file_dialog)
 
         if file_path_obj is not None:
@@ -145,12 +165,12 @@ async def open_ledger_dialog(window, app_instance) -> str | None:
                 return None
             
             # Handle sandbox bookmarks for macOS
-            if sandbox_service and sandbox_service.is_supported() and hasattr(open_file_dialog, '_impl'):
+            if sandbox_service and sandbox_service.is_supported() and hasattr(select_folder_dialog, '_impl'):
                 try:
                     # Get the selected file's URL from the native dialog
-                    selected_url = open_file_dialog._impl.selected_path()  # This returns NSURL
-                    if selected_url:
-                        sandbox_service.create_bookmark_for_file_selection(selected_url, file_path_obj)
+                    folder_url = select_folder_dialog._impl.selected_path()  # This returns NSURL
+                    if folder_url:
+                        sandbox_service.create_bookmark_for_file_selection(folder_url, file_path_obj)
                 except Exception as e:
                     # If bookmark creation fails, still proceed
                     logger.warning("Failed to create security-scoped bookmark: %s", e)

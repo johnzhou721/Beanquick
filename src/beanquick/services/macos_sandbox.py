@@ -133,7 +133,7 @@ class MacOSSandboxService:
         """
         if not self.is_supported():
             return None
-            
+        
         try:
             # Create security-scoped bookmark
             bookmark_data = directory_url.bookmarkDataWithOptions_includingResourceValuesForKeys_relativeToURL_error_(
@@ -142,7 +142,6 @@ class MacOSSandboxService:
                 None,  # Not relative to another URL
                 None   # Error parameter (we'll handle exceptions instead)
             )
-            
             if bookmark_data:
                 return ctypes.string_at(bookmark_data.bytes, bookmark_data.length)
             return None
@@ -310,7 +309,7 @@ class MacOSSandboxService:
             self.clear_stored_bookmark()
             return None
     
-    def create_bookmark_for_file_selection(self, selected_url: 'NSURL', file_path: Path) -> None:
+    def create_bookmark_for_file_selection(self, directory_url: 'NSURL', file_path: Path) -> None:
         """
         Create and store a security-scoped bookmark for a file selection.
         
@@ -318,22 +317,19 @@ class MacOSSandboxService:
         a bookmark for a parent directory when a file is selected.
         
         Args:
-            selected_url: The NSURL of the selected file
+            directory_url: The NSURL of the selected directory
             file_path: The Path object of the selected file
         """
         if not self.is_supported():
             return
             
         try:
-            # Get parent directory URL
-            parent_directory_url = selected_url.URLByDeletingLastPathComponent
-            
             # Create security-scoped bookmark for the parent directory
-            bookmark_data = self.create_security_scoped_bookmark(parent_directory_url)
+            bookmark_data = self.create_security_scoped_bookmark(directory_url)
             if bookmark_data:
                 # Calculate relative path from parent directory to the selected file
-                parent_directory_path = Path(str(parent_directory_url.path))
-                relative_file_path = file_path.relative_to(parent_directory_path)
+                directory_path = Path(str(directory_url.path))
+                relative_file_path = file_path.relative_to(directory_path)
                 
                 # Store bookmark data and relative file path
                 self.store_bookmark_data(bookmark_data, str(relative_file_path))
