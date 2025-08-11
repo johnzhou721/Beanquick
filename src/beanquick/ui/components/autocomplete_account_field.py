@@ -68,8 +68,12 @@ class AutocompleteAccountField:
     
     @value.setter
     def value(self, val: str):
-        """Set the value."""
-        self.widget.value = val or ""
+        """Set the value programmatically without triggering autocompletion."""
+        self._setting_suggestion = True
+        try:
+            self.widget.value = val or ""
+        finally:
+            self._setting_suggestion = False
     
     def clear(self):
         """Clear the field."""
