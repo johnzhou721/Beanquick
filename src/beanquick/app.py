@@ -17,6 +17,7 @@ from beanquick.core import BeanquickLedger
 from beanquick.services.logging import get_logger, setup_logging
 from beanquick.services.state_manager import StateManager
 from beanquick.services.locale_service import LocaleService
+from beanquick.services.widget_registry_service import WidgetRegistryService
 from beanquick.config import AppConfig
 from beanquick.toga_babel import _, TogaBabel
 from beanquick.constants import DEFAULT_USER_LOCALE
@@ -69,6 +70,9 @@ class Beanquick(toga.App):
             translation_directories='translations',
             locale_selector=self.locale_service.locale_selector_handler
         )
+
+        # Initialize custom widget registry
+        self.widget_registry = WidgetRegistryService(self)
 
     def startup(self):
         """Construct and show the Toga application.
