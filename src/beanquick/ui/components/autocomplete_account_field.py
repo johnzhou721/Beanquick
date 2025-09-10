@@ -87,10 +87,6 @@ class AutocompleteAccountField:
     
     def _on_account_input_change(self, widget, **kwargs):
         """Handle account input changes for autocompletion."""
-        # First call the user's change handler
-        if self.on_change:
-            self.on_change(widget, **kwargs)
-
         if self._setting_suggestion:
             return
         
@@ -186,6 +182,7 @@ class AutocompleteAccountField:
         self._setting_suggestion = True
         try:
             self.widget.value = selected_account
+
             if self.on_change:
                 self.on_change(self.widget)
         finally:
@@ -204,7 +201,7 @@ class AutocompleteAccountField:
         if self.on_lose_focus:
             self.on_lose_focus(widget)
 
-    def _on_account_input_confirm(self, widget):
+    def _on_account_input_confirm(self, widget, **kwargs):
         """Handle account input confirmation."""
         if self.suggestion_popup:
             self.suggestion_popup.select_current()
