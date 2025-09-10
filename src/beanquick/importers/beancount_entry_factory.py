@@ -106,6 +106,9 @@ class BeancountEntryFactory:
                 )
             ]
             
+            # Convert tags from TransactionData to beancount format
+            beancount_tags = frozenset(transaction_data.tags) if transaction_data.tags else frozenset()
+            
             # Create the beancount Transaction entry
             transaction = data.Transaction(
                 # meta=meta,
@@ -114,7 +117,7 @@ class BeancountEntryFactory:
                 flag="*",  # Mark as cleared
                 payee=transaction_data.payee,
                 narration=transaction_data.narration,
-                tags=frozenset(),
+                tags=beancount_tags,
                 links=frozenset(),
                 postings=postings
             )

@@ -5,10 +5,13 @@ This module defines the standardized data transfer objects used throughout
 the importer system to ensure consistent data format across all importers.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
-from typing import Optional, Dict, Any, Set
+from typing import Optional, Dict, Any, Set, Union
+from collections.abc import Iterable
+from enum import Enum
+from typing import Optional, Dict, Any, Set, Union
 from enum import Enum
 
 
@@ -46,6 +49,7 @@ class TransactionData:
         narration: Optional transaction description or memo
         amount: The transaction amount as a Decimal for precise calculations
         currency: The currency code (e.g., 'USD', 'CNY')
+        tags: Set of tags associated with the transaction for categorization
         metadata: Optional dictionary for storing additional data like original row data
     """
     date: date
@@ -53,6 +57,7 @@ class TransactionData:
     narration: Optional[str]
     amount: Decimal
     currency: str
+    tags: Union[Set[str], Iterable[str]] = field(default_factory=set)
     metadata: Optional[Dict[str, Any]] = None
     
     def __post_init__(self):
@@ -61,6 +66,8 @@ class TransactionData:
         This method ensures data integrity by:
         - Converting amount to Decimal if it's not already
         - Initializing metadata as empty dict if None
+        - Ensuring tags is a set and cleaning tag values
+        - Syncing tags with metadata for backward compatibility
         - Validating required fields are not empty
         
         Raises:
@@ -77,6 +84,31 @@ class TransactionData:
         # Initialize metadata as empty dict if None
         if self.metadata is None:
             self.metadata = {}
+        
+        # Ensure tags is a set and clean tag values
+        try:
+            if self.tags is None:
+                self.tags = set()
+            elif isinstance(self.tags, set):
+                # Clean existing set tags
+                self.tags = {tag.strip() for tag in self.tags if tag and tag.strip()}
+            else:
+                # Convert from list/tuple/other collection 
+                converted_tags = set()
+                try:
+                    # Use type: ignore to bypass type checker for this conversion
+                    for item in self.tags:  # type: ignore
+                        if item and str(item).strip():
+                            converted_tags.add(str(item).strip())
+                except (TypeError, ValueError):
+                    pass  # If iteration fails, just use empty set
+                self.tags = converted_tags
+        except Exception:
+            # Fallback: ensure we have a valid empty set
+            self.tags = set()
+        
+        # Sync tags with metadata for backward compatibility
+        self.metadata['tags'] = list(self.tags) if self.tags else []
         
         # Validate required string fields are not empty
         if not self.payee or not self.payee.strip():

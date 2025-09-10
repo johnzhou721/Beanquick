@@ -87,6 +87,7 @@ COLOR_SCHEMES = {
         string=(196, 26, 22),         # Dark Red
         comment=(128, 128, 128),      # Gray
         keyword=(170, 13, 145),       # Magenta
+        tag=(0, 150, 136),            # Teal
         normal=(0, 0, 0),             # Black
         background=(255, 255, 255)    # White
     ),
@@ -101,6 +102,7 @@ COLOR_SCHEMES = {
         string=(255, 120, 120),       # Light Red
         comment=(120, 120, 120),      # Light Gray
         keyword=(255, 100, 200),      # Pink
+        tag=(100, 255, 200),          # Light Teal
         normal=(220, 220, 220),       # Light Gray
         background=(40, 40, 40)       # Dark Gray
     ),
@@ -115,6 +117,7 @@ COLOR_SCHEMES = {
         string=(220, 50, 47),         # Red
         comment=(147, 161, 161),      # Base1
         keyword=(211, 54, 130),       # Magenta
+        tag=(42, 161, 152),           # Cyan
         normal=(101, 123, 131),       # Base00
         background=(253, 246, 227)    # Base3
     ),
@@ -129,6 +132,7 @@ COLOR_SCHEMES = {
         string=(220, 50, 47),         # Red
         comment=(88, 110, 117),       # Base01
         keyword=(211, 54, 130),       # Magenta
+        tag=(42, 161, 152),           # Cyan
         normal=(131, 148, 150),       # Base0
         background=(0, 43, 54)        # Base03
     ),
@@ -143,6 +147,7 @@ COLOR_SCHEMES = {
         string=(230, 219, 116),       # Yellow
         comment=(117, 113, 94),       # Comment Gray
         keyword=(249, 38, 114),       # Pink/Magenta
+        tag=(102, 217, 239),          # Cyan (same as date)
         normal=(248, 248, 242),       # Foreground
         background=(39, 40, 34)       # Background
     ),
@@ -157,6 +162,7 @@ COLOR_SCHEMES = {
         string=(206, 145, 120),       # Light Orange
         comment=(106, 153, 85),       # Green Comment
         keyword=(197, 134, 192),      # Light Purple
+        tag=(78, 201, 176),           # Teal (same as account)
         normal=(212, 212, 212),       # Light Gray
         background=(30, 30, 30)       # Dark Gray
     ),
@@ -171,6 +177,7 @@ COLOR_SCHEMES = {
         string=(3, 47, 98),           # Dark Blue
         comment=(106, 115, 125),      # Gray
         keyword=(215, 58, 73),        # Red
+        tag=(0, 92, 197),             # Blue (variant)
         normal=(36, 41, 46),          # Dark Gray
         background=(255, 255, 255)    # White
     ),
@@ -185,6 +192,7 @@ COLOR_SCHEMES = {
         string=(165, 214, 255),       # #a5d6ff - string (light blue)
         comment=(139, 148, 158),      # #8b949e - comment (gray)
         keyword=(255, 123, 114),      # #ff7b72 - keyword (red/pink)
+        tag=(121, 192, 255),          # #79c0ff - constant (light blue, same as date)
         normal=(230, 237, 243),       # #e6edf3 - text (light gray)
         background=(13, 17, 23)       # #0d1117 - canvas.default (dark)
     ),
@@ -199,6 +207,7 @@ COLOR_SCHEMES = {
         string=(241, 250, 140),       # Yellow
         comment=(98, 114, 164),       # Comment
         keyword=(255, 121, 198),      # Pink
+        tag=(139, 233, 253),          # Cyan (same as date)
         normal=(248, 248, 242),       # Foreground
         background=(40, 42, 54)       # Background
     ),
@@ -213,6 +222,7 @@ COLOR_SCHEMES = {
         string=(224, 108, 117),       # Red
         comment=(92, 99, 112),        # Comment Gray
         keyword=(198, 120, 221),      # Purple
+        tag=(97, 175, 239),           # Blue (same as date)
         normal=(171, 178, 191),       # Foreground
         background=(40, 44, 52)       # Background
     ),
@@ -227,6 +237,7 @@ COLOR_SCHEMES = {
         string=(255, 0, 0),           # Red
         comment=(64, 64, 64),         # Dark Gray
         keyword=(128, 0, 0),          # Dark Red
+        tag=(0, 128, 128),            # Dark Cyan
         normal=(0, 0, 0),             # Black
         background=(255, 255, 255)    # White
     ),
@@ -241,6 +252,7 @@ COLOR_SCHEMES = {
         string=(255, 100, 100),       # Light Red
         comment=(200, 200, 200),      # Light Gray
         keyword=(255, 150, 150),      # Light Pink
+        tag=(100, 255, 255),          # Light Cyan
         normal=(255, 255, 255),       # White
         background=(0, 0, 0)          # Black
     )
@@ -299,6 +311,9 @@ class BeanquickSyntaxHighlighter:
             
             # Comment patterns (lines starting with ;)
             (r';.*$', 'comment'),
+            
+            # Tag patterns (#tag, #tag-name, #tag_name)
+            (r'#[a-zA-Z0-9_-]+', 'tag'),
             
             # Beancount keywords
             (r'\b(txn|open|close|balance|pad|note|document|price|event|custom|plugin|include|option)\b', 'keyword'),
