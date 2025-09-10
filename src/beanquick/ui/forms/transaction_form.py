@@ -93,7 +93,7 @@ class TransactionForm(BaseDirectiveForm, MacOSTabChainMixin, FormValidationMixin
         
         # Create the main form box
         form_box = toga.Box(
-            style=Pack(flex=1, direction=COLUMN, margin=WIDGET_SPACING),
+            style=Pack(direction=COLUMN, margin=WIDGET_SPACING),
             children=[main_row, self.postings_box]
         )
         

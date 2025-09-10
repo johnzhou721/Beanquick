@@ -9,7 +9,7 @@ import sys
 
 import toga
 from toga.style import Pack
-from toga.style.pack import ROW  # type: ignore
+from toga.style.pack import ROW, COLUMN  # type: ignore
 
 from beanquick.ui.base_entry_box import BaseEntryBox
 from beanquick.services.directive_factory import DirectiveFactory
@@ -94,7 +94,7 @@ class EntryBox(BaseEntryBox):
         """Create the form container and initial form."""
         # Create a container that will hold the current form
         self.form_container = toga.Box(
-            style=Pack(flex=1, direction=ROW),
+            style=Pack(flex=1, direction=COLUMN),
         )
         
         # Load the initial form
