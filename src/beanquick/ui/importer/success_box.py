@@ -150,7 +150,7 @@ class SuccessView:
         """Create an enhanced header section with better visual design."""
         # Success icon with better styling
         success_icon = toga.ImageView(
-            image=toga.Image('resources/images/NotoPartyPopper.png'),
+            image=toga.Image('resources/images/NotoPartyPopper.svg'),
             style=Pack(
                 width=ICON_SIZE, 
                 height=ICON_SIZE, 

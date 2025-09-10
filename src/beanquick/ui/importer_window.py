@@ -138,7 +138,7 @@ class ImporterWindow(toga.Window):
         """Create the UI components."""
         # --- 1. Top Area (Logo/App Name & Title) ---
         logo = toga.ImageView(
-            image=toga.Image('resources/images/NotoMagicWand.png'),
+            image=toga.Image('resources/images/NotoMagicWand.svg'),
             style=Pack(width=108, height=108)
         )
 
