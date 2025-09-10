@@ -49,7 +49,7 @@ class Beanquick(toga.App):
         # Set up logging
         try:
             logs_path = self.paths.logs
-            app_file_log_level = logging.INFO
+            app_file_log_level = logging.WARNING
             console_log_level = logging.DEBUG
             setup_logging(logs_path, app_file_log_level, console_log_level)
         except (OSError, ValueError) as e:
@@ -80,13 +80,14 @@ class Beanquick(toga.App):
         logger.info(f"{self.formal_name} starting up...")
 
         # Create main window with default size (will be overridden by saved state if available)
-        self.main_window = toga.MainWindow(title=self.formal_name, size=(740, 600))
+        main_window = toga.MainWindow(title=self.formal_name, size=(740, 600))
+        self.main_window = main_window
 
         # Determine initial state and navigate there
         self.state_manager.initialize_app_state()
 
         # Show the main window
-        self.main_window.show()
+        main_window.show()
 
     def preferences(self, widget=None, **kwargs):
         """Show the settings window."""
