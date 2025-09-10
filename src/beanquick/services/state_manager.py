@@ -348,6 +348,7 @@ class MainState(StateHandler):
         self._new_ledger_command: toga.Command | None = None
         self._open_ledger_command: toga.Command | None = None
         self._help_command: toga.Command | None = None
+        self._importer_command: toga.Command | None = None
         self._preferences_command: toga.Command | None = None
     
     def enter(self, **kwargs) -> toga.Box:
@@ -436,6 +437,18 @@ class MainState(StateHandler):
             )
             self.app.commands.add(self._help_command)
             self.app.main_window.toolbar.add(self._help_command)
+        
+        # Help command
+        if not self._importer_command:
+            self._importer_command = toga.Command(
+                self._show_importer,
+                text='Importer',
+                group=toga.Group.FILE,
+                section=1,
+                icon="resources/images/NotoMagicWand.svg",
+            )
+            self.app.commands.add(self._importer_command)
+            self.app.main_window.toolbar.add(self._importer_command)
 
         # Preferences command
         if not self._preferences_command:
@@ -486,3 +499,9 @@ class MainState(StateHandler):
         # Show the manual help topic using the i18n-aware help system
         # The help system will automatically use the current locale
         show_help_window(self.app, topic="manual.md")
+
+    def _show_importer(self, widget=None, **kwargs):
+        """Show the importer window."""
+        logger.info("Showing importer window")
+        from beanquick.ui.importer_window import show_importer_window
+        show_importer_window(self.app)
