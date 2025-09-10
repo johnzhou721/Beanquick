@@ -2,11 +2,11 @@
 [tool.briefcase]
 project_name = "Beanquick"
 bundle = "com.twobitsware"
-version = "0.0.1"
+version = "0.2.0"
 url = "https://twobitsware.com/beanquick"
 license.file = "LICENSE"
 author = "TwoBitsWare"
-author_email = "z@twobitsware.com"
+author_email = "twobitsware@gmail.com"
 
 [tool.briefcase.app.beanquick]
 formal_name = "Beanquick"
@@ -25,6 +25,7 @@ test_sources = [
 requires = [
     "Babel",
     "beancount>=3.1.0",
+    "beangulp",
     "beanquery",
     "Jinja2",
     "mistune>=3.0.0",
@@ -41,13 +42,20 @@ test_requires = [
 [tool.briefcase.app.beanquick.macOS]
 universal_build = true
 requires = [
-    "toga-cocoa~=0.5.1",
+    "toga-cocoa~=0.5.2",
     "std-nslog~=1.0.3",
 ]
+cleanup_paths = [
+    "Support/Python.xcframework/**/python*/config-*-darwin",
+    "Support/Python.xcframework/**/pkgconfig",
+]
+entitlement."com.apple.security.app-sandbox" = true
+entitlement."com.apple.security.files.user-selected.read-write" = true
+entitlement."com.apple.security.network.client" = true
 
 [tool.briefcase.app.beanquick.linux]
 requires = [
-    "toga-gtk~=0.5.1",
+    "toga-gtk~=0.5.2",
     # PyGObject 3.52.1 enforces a requirement on libgirepository-2.0-dev. This library
     # isn't available on Debian 12/Ubuntu 22.04. If you don't need to support those (or
     # older) releases, you can remove this version pin. See beeware/toga#3143.
@@ -173,19 +181,19 @@ flatpak_sdk = "org.gnome.Sdk"
 
 [tool.briefcase.app.beanquick.windows]
 requires = [
-    "toga-winforms~=0.5.1",
+    "toga-winforms~=0.5.2",
 ]
 
 # Mobile deployments
 [tool.briefcase.app.beanquick.iOS]
 requires = [
-    "toga-iOS~=0.5.1",
+    "toga-iOS~=0.5.2",
     "std-nslog~=1.0.3",
 ]
 
 [tool.briefcase.app.beanquick.android]
 requires = [
-    "toga-android~=0.5.1",
+    "toga-android~=0.5.2",
 ]
 
 base_theme = "Theme.MaterialComponents.Light.DarkActionBar"
@@ -201,7 +209,7 @@ build_gradle_dependencies = [
 # Web deployments
 [tool.briefcase.app.beanquick.web]
 requires = [
-    "toga-web~=0.5.1",
+    "toga-web~=0.5.2",
 ]
 style_framework = "Shoelace v2.3"
 
