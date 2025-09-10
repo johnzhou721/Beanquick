@@ -17,7 +17,7 @@ from .action_executor import ActionExecutor
 from .rule_components import (
     ConditionsBlock, Action, ActionType
 )
-from beanquick.ui.transaction_triage_data import TransactionDisplayData
+from beanquick.ui.importer.transaction_review.models import TransactionDisplayData
 
 logger = logging.getLogger(__name__)
 

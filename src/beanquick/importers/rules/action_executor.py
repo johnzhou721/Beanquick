@@ -11,7 +11,7 @@ from .rule_components import ActionType
 
 if TYPE_CHECKING:
     from .rule_components import Action
-    from beanquick.ui.transaction_triage_data import TransactionDisplayData
+    from beanquick.ui.importer.transaction_review.models import TransactionDisplayData
 
 logger = logging.getLogger(__name__)
 

@@ -18,9 +18,10 @@ from toga.style.pack import CENTER, ROW, COLUMN, MONOSPACE  # type: ignore
 from toga.constants import Direction, DODGERBLUE
 
 from beanquick.services.account_completer import AccountCompleter
-from beanquick.serialisation import deserialise
+from beanquick.util.serialisation import deserialise
 from beanquick.beans.str import to_string
 from beanquick.helpers import BeanquickError
+from beanquick.util import transform_file_paths_for_selection
 from beanquick.util.syntax_highlighter import BeanquickSyntaxHighlighter
 
 if TYPE_CHECKING:
@@ -196,7 +197,7 @@ class BaseEntryBox(toga.Box, ABC):
 
         file_paths = self.app.active_ledger.options["include"] if self.app.active_ledger else []
         beancount_file_path = self.app.active_ledger.beancount_file_path if self.app.active_ledger else ""
-        selection_items = self._transform_file_paths_for_selection(list(file_paths), beancount_file_path)
+        selection_items = transform_file_paths_for_selection(list(file_paths), beancount_file_path)
         save_to_file_selector = toga.Selection(
             items=selection_items,
             accessor="name",
@@ -241,61 +242,6 @@ class BaseEntryBox(toga.Box, ABC):
 
         return action_box
 
-    def _transform_file_paths_for_selection(self, file_paths: list[str], main_file: str) -> list[dict[str, str]]:
-        """Transform file paths into display format for toga.Selection.
-        
-        Args:
-            file_paths: List of absolute file paths
-            main_file: Path to the main file used for common path detection
-            
-        Returns:
-            List of dictionaries with 'name' and 'value' keys for toga.Selection
-        """
-        if not file_paths:
-            return []
-        
-        # Convert to Path objects for easier manipulation
-        paths = [Path(path) for path in file_paths]
-        main_path = Path(main_file)
-        
-        # Find common parent directory using the main file's parent
-        # We'll use the main file's parent as reference point
-        main_parent = main_path.parent
-        
-        # Find the deepest common parent among all paths including main file
-        all_paths = paths + [main_path]
-        common_parent = None
-        
-        # Start from main file's parent and work upwards
-        current_parent = main_parent
-        while current_parent != current_parent.parent:  # Not root
-            if all(current_parent in path.parents or path == current_parent for path in all_paths):
-                common_parent = current_parent
-                break
-            current_parent = current_parent.parent
-        
-        # If no common parent found, use the main file's parent
-        if common_parent is None:
-            common_parent = main_parent
-        
-        # Create selection items with relative paths
-        selection_items = []
-        for path in paths:
-            try:
-                # Get relative path from common parent
-                relative_path = path.relative_to(common_parent)
-                display_name = str(relative_path)
-            except ValueError:
-                # If relative path fails, just use the filename
-                display_name = path.name
-            
-            selection_items.append({
-                "name": display_name,
-                "value": str(path)
-            })
-        
-        return selection_items
-    
     def _on_save_to_file_change(self, widget, **kwargs):
         """Handle changes to the 'Save to' file selector."""
         selected_row = widget.value
