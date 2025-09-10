@@ -9,7 +9,7 @@ import logging
 from pathlib import Path
 from typing import List, Dict, Optional, Any, Union
 import base64
-import mimetypes
+
 
 import toga
 from toga.style import Pack
@@ -422,17 +422,11 @@ class HelpWindow(toga.Window):
                 logger.warning(f"Image file not found: {image_path}")
                 return None
             
-            # Get MIME type
-            mime_type, _ = mimetypes.guess_type(str(image_path))
-            if not mime_type or not mime_type.startswith('image/'):
-                logger.warning(f"File is not a recognized image type: {image_path}")
-                return None
-            
             # Read and encode the image
             with open(image_path, 'rb') as img_file:
                 img_data = img_file.read()
                 base64_data = base64.b64encode(img_data).decode('utf-8')
-                return f"data:{mime_type};base64,{base64_data}"
+                return f"data:image/png;base64,{base64_data}"
                 
         except Exception as e:
             logger.error(f"Error encoding image {image_path}: {e}")
