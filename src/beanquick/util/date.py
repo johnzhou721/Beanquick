@@ -1,0 +1,819 @@
+"""Date-related functionality.
+
+Note:
+    Date ranges are always tuples (start, end) from the (inclusive) start date
+    to the (exclusive) end date.
+"""
+
+from __future__ import annotations
+
+import datetime
+import re
+from dataclasses import dataclass
+from datetime import timedelta
+from enum import Enum
+from itertools import tee
+from typing import TYPE_CHECKING
+
+# from beanquick.toga_babel import gettext  # type: ignore[import-untyped]
+
+from beanquick.util.unreachable import assert_never
+
+if TYPE_CHECKING:  # pragma: no cover
+    from collections.abc import Iterable
+    from collections.abc import Iterator
+
+
+IS_RANGE_RE = re.compile(r"(.*?)(?:-|to)(?=\s*(?:fy)*\d{4})(.*)")
+
+# these match dates of the form 'year-month-day'
+# day or month and day may be omitted
+YEAR_RE = re.compile(r"^\d{4}$")
+MONTH_RE = re.compile(r"^(\d{4})-(\d{2})$")
+DAY_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})$")
+
+# this matches a week like 2016-W02 for the second week of 2016
+WEEK_RE = re.compile(r"^(\d{4})-w(\d{2})$")
+
+# this matches a quarter like 2016-Q1 for the first quarter of 2016
+QUARTER_RE = re.compile(r"^(\d{4})-q([1234])$")
+
+# this matches a financial year like FY2018 for the financial year ending 2018
+FY_RE = re.compile(r"^fy(\d{4})$")
+
+# this matches a quarter in a financial year like FY2018-Q2
+FY_QUARTER_RE = re.compile(r"^fy(\d{4})-q([1234])$")
+
+VARIABLE_RE = re.compile(
+    r"\(?(fiscal_year|year|fiscal_quarter|quarter"
+    r"|month|week|day)(?:([-+])(\d+))?\)?",
+)
+
+
+@dataclass(frozen=True)
+class FiscalYearEnd:
+    """Month and day that specify the end of the fiscal year."""
+
+    month: int
+    day: int
+
+    @property
+    def month_of_year(self) -> int:
+        """Actual month of the year."""
+        return (self.month - 1) % 12 + 1
+
+    @property
+    def year_offset(self) -> int:
+        """Number of years that this is offset into the future."""
+        return (self.month - 1) // 12
+
+    def has_quarters(self) -> bool:
+        """Whether this fiscal year end supports fiscal quarters."""
+        return (
+            datetime.date(2001, self.month_of_year, self.day) + ONE_DAY
+        ).day == 1
+
+
+class FyeHasNoQuartersError(ValueError):
+    """Only fiscal year that start on the first of a month have quarters."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "Cannot use fiscal quarter if fiscal year "
+            "does not start on first of the month"
+        )
+
+
+END_OF_YEAR = FiscalYearEnd(12, 31)
+
+
+class Interval(Enum):
+    """The possible intervals."""
+
+    YEAR = "year"
+    QUARTER = "quarter"
+    MONTH = "month"
+    WEEK = "week"
+    DAY = "day"
+
+    @property
+    def label(self) -> str:
+        """The label for the interval."""
+        labels: dict[Interval, str] = {
+            Interval.YEAR: "Yearly",
+            Interval.QUARTER: "Quarterly",
+            Interval.MONTH: "Monthly",
+            Interval.WEEK: "Weekly",
+            Interval.DAY: "Daily",
+        }
+        return labels[self]
+
+    @staticmethod
+    def get(string: str) -> Interval:
+        """Return the enum member for a string."""
+        try:
+            return Interval[string.upper()]
+        except KeyError:
+            return Interval.MONTH
+
+    def format_date(self, date: datetime.date) -> str:
+        """Format a date for this interval for human consumption."""
+        if self is Interval.YEAR:
+            return date.strftime("%Y")
+        if self is Interval.QUARTER:
+            return f"{date.year}Q{(date.month - 1) // 3 + 1}"
+        if self is Interval.MONTH:
+            return date.strftime("%b %Y")
+        if self is Interval.WEEK:
+            return date.strftime("%GW%V")
+        return date.strftime("%Y-%m-%d")
+
+    def format_date_filter(self, date: datetime.date) -> str:
+        """Format a date for this interval for the Fava time filter."""
+        if self is Interval.YEAR:
+            return date.strftime("%Y")
+        if self is Interval.QUARTER:
+            return f"{date.year}-Q{(date.month - 1) // 3 + 1}"
+        if self is Interval.MONTH:
+            return date.strftime("%Y-%m")
+        if self is Interval.WEEK:
+            return date.strftime("%G-W%V")
+        return date.strftime("%Y-%m-%d")
+
+
+def get_prev_interval(
+    date: datetime.date,
+    interval: Interval,
+) -> datetime.date:
+    """Get the start date of the interval in which the date falls.
+
+    Args:
+        date: A date.
+        interval: An interval.
+
+    Returns:
+        The start date of the `interval` before `date`.
+    """
+    if interval is Interval.YEAR:
+        return datetime.date(date.year, 1, 1)
+    if interval is Interval.QUARTER:
+        for i in [10, 7, 4]:
+            if date.month > i:
+                return datetime.date(date.year, i, 1)
+        return datetime.date(date.year, 1, 1)
+    if interval is Interval.MONTH:
+        return datetime.date(date.year, date.month, 1)
+    if interval is Interval.WEEK:
+        return date - timedelta(date.weekday())
+    return date
+
+
+def get_next_interval(  # noqa: PLR0911
+    date: datetime.date,
+    interval: Interval,
+) -> datetime.date:
+    """Get the start date of the next interval.
+
+    Args:
+        date: A date.
+        interval: An interval.
+
+    Returns:
+        The start date of the next `interval` after `date`.
+    """
+    try:
+        if interval is Interval.YEAR:
+            return datetime.date(date.year + 1, 1, 1)
+        if interval is Interval.QUARTER:
+            for i in [4, 7, 10]:
+                if date.month < i:
+                    return datetime.date(date.year, i, 1)
+            return datetime.date(date.year + 1, 1, 1)
+        if interval is Interval.MONTH:
+            month = (date.month % 12) + 1
+            year = date.year + (date.month + 1 > 12)
+            return datetime.date(year, month, 1)
+        if interval is Interval.WEEK:
+            return date + timedelta(7 - date.weekday())
+        if interval is Interval.DAY:
+            return date + timedelta(1)
+        return assert_never(interval)  # pragma: no cover
+    except (ValueError, OverflowError):
+        return datetime.date.max
+
+
+def interval_ends(
+    first: datetime.date,
+    last: datetime.date,
+    interval: Interval,
+) -> Iterator[datetime.date]:
+    """Get interval ends.
+
+    Yields:
+        The ends of the intervals.
+    """
+    yield get_prev_interval(first, interval)
+    while first < last:
+        first = get_next_interval(first, interval)
+        yield first
+
+
+ONE_DAY = timedelta(days=1)
+
+
+@dataclass
+class DateRange:
+    """A range of dates, usually matching an interval."""
+
+    #: The inclusive start date of this range of dates.
+    begin: datetime.date
+    #: The exclusive end date of this range of dates.
+    end: datetime.date
+
+    @property
+    def end_inclusive(self) -> datetime.date:
+        """The last day of this interval."""
+        return self.end - ONE_DAY
+
+    def __hash__(self) -> int:
+        """Hash the date range."""
+        return hash((self.begin, self.end))
+
+def dateranges(
+    begin: datetime.date,
+    end: datetime.date,
+    interval: Interval,
+) -> Iterable[DateRange]:
+    """Get date ranges for the given begin and end date.
+
+    Args:
+        begin: The begin date - the first interval date range will
+               include this date
+        end: The end date - the last interval will end on or after
+             date
+        interval: The type of interval to generate ranges for.
+
+    Yields:
+        Date ranges for all intervals of the given in the
+    """
+    ends = interval_ends(begin, end, interval)
+    left, right = tee(ends)
+    next(right, None)
+    for interval_begin, interval_end in zip(left, right, strict=False):
+        yield DateRange(interval_begin, interval_end)
+
+
+def local_today() -> datetime.date:
+    """Today as a date in the local timezone."""
+    return datetime.date.today()  # noqa: DTZ011
+
+
+def substitute(
+    string: str,
+    fye: FiscalYearEnd | None = None,
+) -> str:
+    """Replace variables referring to the current day.
+
+    Args:
+        string: A string, possibly containing variables for today.
+        fye: Use a specific fiscal-year-end
+
+    Returns:
+        A string, where variables referring to the current day, like 'year' or
+        'week' have been replaced by the corresponding string understood by
+        :func:`parse_date`.  Can compute addition and subtraction.
+    """
+    today = local_today()
+    fye = fye or END_OF_YEAR
+
+    for match in VARIABLE_RE.finditer(string):
+        complete_match, interval, plusminus_, mod_ = match.group(0, 1, 2, 3)
+        mod = int(mod_) if mod_ else 0
+        offset = mod if plusminus_ == "+" else -mod
+        if interval == "fiscal_year":
+            after_fye = (today.month, today.day) > (fye.month_of_year, fye.day)
+            year = today.year + (1 if after_fye else 0) - fye.year_offset
+            string = string.replace(complete_match, f"FY{year + offset}")
+        if interval == "year":
+            string = string.replace(complete_match, str(today.year + offset))
+        if interval == "fiscal_quarter":
+            if not fye.has_quarters():
+                raise FyeHasNoQuartersError
+            target = month_offset(today.replace(day=1), offset * 3)
+            after_fye = (target.month) > (fye.month_of_year)
+            year = target.year + (1 if after_fye else 0) - fye.year_offset
+            quarter = ((target.month - fye.month_of_year - 1) // 3) % 4 + 1
+            string = string.replace(complete_match, f"FY{year}-Q{quarter}")
+        if interval == "quarter":
+            quarter_today = (today.month - 1) // 3 + 1
+            year = today.year + (quarter_today + offset - 1) // 4
+            quarter = (quarter_today + offset - 1) % 4 + 1
+            string = string.replace(complete_match, f"{year}-Q{quarter}")
+        if interval == "month":
+            year = today.year + (today.month + offset - 1) // 12
+            month = (today.month + offset - 1) % 12 + 1
+            string = string.replace(complete_match, f"{year}-{month:02}")
+        if interval == "week":
+            string = string.replace(
+                complete_match,
+                (today + timedelta(offset * 7)).strftime("%G-W%V"),
+            )
+        if interval == "day":
+            string = string.replace(
+                complete_match,
+                (today + timedelta(offset)).isoformat(),
+            )
+    return string
+
+
+def parse_date(  # noqa: PLR0911
+    string: str,
+    fye: FiscalYearEnd | None = None,
+) -> tuple[datetime.date | None, datetime.date | None]:
+    """Parse a date.
+
+    Example of supported formats:
+
+    - 2010-03-15, 2010-03, 2010
+    - 2010-W01, 2010-Q3
+    - FY2012, FY2012-Q2
+
+    Ranges of dates can be expressed in the following forms:
+
+    - start - end
+    - start to end
+
+    where start and end look like one of the above examples
+
+    Args:
+        string: A date(range) in our custom format.
+        fye: The fiscal year end to consider.
+
+    Returns:
+        A tuple (start, end) of dates.
+    """
+    string = string.strip().lower()
+    if not string:
+        return None, None
+
+    string = substitute(string, fye).lower()
+
+    match = IS_RANGE_RE.match(string)
+    if match:
+        return (
+            parse_date(match.group(1), fye)[0],
+            parse_date(match.group(2), fye)[1],
+        )
+
+    match = YEAR_RE.match(string)
+    if match:
+        year = int(match.group(0))
+        start = datetime.date(year, 1, 1)
+        return start, get_next_interval(start, Interval.YEAR)
+
+    match = MONTH_RE.match(string)
+    if match:
+        year, month = map(int, match.group(1, 2))
+        start = datetime.date(year, month, 1)
+        return start, get_next_interval(start, Interval.MONTH)
+
+    match = DAY_RE.match(string)
+    if match:
+        year, month, day = map(int, match.group(1, 2, 3))
+        start = datetime.date(year, month, day)
+        return start, get_next_interval(start, Interval.DAY)
+
+    match = WEEK_RE.match(string)
+    if match:
+        year, week = map(int, match.group(1, 2))
+        start = (
+            datetime.datetime.strptime(f"{year}-W{week}-1", "%G-W%V-%w")
+            .replace(tzinfo=datetime.timezone.utc)
+            .date()
+        )
+        return start, get_next_interval(start, Interval.WEEK)
+
+    match = QUARTER_RE.match(string)
+    if match:
+        year, quarter = map(int, match.group(1, 2))
+        quarter_first_day = datetime.date(year, (quarter - 1) * 3 + 1, 1)
+        return (
+            quarter_first_day,
+            get_next_interval(quarter_first_day, Interval.QUARTER),
+        )
+
+    match = FY_RE.match(string)
+    if match:
+        year = int(match.group(1))
+        return get_fiscal_period(year, fye)
+
+    match = FY_QUARTER_RE.match(string)
+    if match:
+        year, quarter = map(int, match.group(1, 2))
+        return get_fiscal_period(year, fye, quarter)
+
+    return None, None
+
+
+def month_offset(date: datetime.date, months: int) -> datetime.date:
+    """Offsets a date by a given number of months.
+
+    Maintains the day, unless that day is invalid when it will
+    raise a ValueError
+
+    """
+    year_delta, month = divmod(date.month - 1 + months, 12)
+
+    return date.replace(year=date.year + year_delta, month=month + 1)
+
+
+def parse_fye_string(fye: str) -> FiscalYearEnd | None:
+    """Parse a string option for the fiscal year end.
+
+    Args:
+        fye: The end of the fiscal year to parse.
+    """
+    match = re.match(r"^(?P<month>\d{2})-(?P<day>\d{2})$", fye)
+    if not match:
+        return None
+    month = int(match.group("month"))
+    day = int(match.group("day"))
+    try:
+        _ = datetime.date(2001, (month - 1) % 12 + 1, day)
+        return FiscalYearEnd(month, day)
+    except ValueError:
+        return None
+
+
+def get_fiscal_period(
+    year: int,
+    fye: FiscalYearEnd | None,
+    quarter: int | None = None,
+) -> tuple[datetime.date | None, datetime.date | None]:
+    """Calculate fiscal periods.
+
+    Uses the fava option "fiscal-year-end" which should be in "%m-%d" format.
+    Defaults to calendar year [12-31]
+
+    Args:
+        year: An integer year
+        fye: End date for period in "%m-%d" format
+        quarter: one of [None, 1, 2, 3 or 4]
+
+    Returns:
+        A tuple (start, end) of dates.
+
+    """
+    fye = fye or END_OF_YEAR
+    start = (
+        datetime.date(year - 1 + fye.year_offset, fye.month_of_year, fye.day)
+        + ONE_DAY
+    )
+    # Special case 02-28 because of leap years
+    if fye.month_of_year == 2 and fye.day == 28:
+        start = start.replace(month=3, day=1)
+
+    if quarter is None:
+        return start, start.replace(year=start.year + 1)
+
+    if not fye.has_quarters():
+        return None, None
+
+    if quarter < 1 or quarter > 4:
+        return None, None
+
+    start = month_offset(start, (quarter - 1) * 3)
+
+    return start, month_offset(start, 3)
+
+
+def days_in_daterange(
+    start_date: datetime.date,
+    end_date: datetime.date,
+) -> Iterator[datetime.date]:
+    """Yield a datetime for every day in the specified interval.
+
+    Args:
+        start_date: A start date.
+        end_date: An end date (exclusive).
+
+    Yields:
+        All days between `start_date` to `end_date`.
+    """
+    for diff in range((end_date - start_date).days):
+        yield start_date + timedelta(diff)
+
+
+def number_of_days_in_period(interval: Interval, date: datetime.date) -> int:
+    """Get number of days in the surrounding interval.
+
+    Args:
+        interval: An interval.
+        date: A date.
+
+    Returns:
+        A number, the number of days surrounding the given date in the
+        interval.
+    """
+    if interval is Interval.DAY:
+        return 1
+    if interval is Interval.WEEK:
+        return 7
+    if interval is Interval.MONTH:
+        date = datetime.date(date.year, date.month, 1)
+        return (get_next_interval(date, Interval.MONTH) - date).days
+    if interval is Interval.QUARTER:
+        quarter = (date.month - 1) / 3 + 1
+        date = datetime.date(date.year, int(quarter) * 3 - 2, 1)
+        return (get_next_interval(date, Interval.QUARTER) - date).days
+    if interval is Interval.YEAR:
+        date = datetime.date(date.year, 1, 1)
+        return (get_next_interval(date, Interval.YEAR) - date).days
+    return assert_never(interval)  # pragma: no cover
+
+def parse_single_date(
+    string: str,
+    fye: FiscalYearEnd | None = None,
+    default_position: str = "start",
+) -> datetime.date | None:
+    """Parse a date string and return a single date with arithmetic support.
+
+    This function extends the original parse_date functionality to:
+    1. Return a single date instead of a range
+    2. Support arithmetic operations (+/- days, weeks, months, years)
+    3. Handle all original date formats
+    4. Provide intelligent defaults for period-based dates
+
+    Supported formats:
+    - Basic: 2024-10-23, 2024-10, 2024, FY2024, 2024-Q1, 2024-W42
+    - Arithmetic: 2024-10-23+5, 2024-Q1-1month, year+30days
+    - Relative: today, yesterday, tomorrow
+    - Flexible: end of 2024-Q1, middle of 2024-10
+
+    Args:
+        string: A date string with optional arithmetic operations
+        fye: The fiscal year end to consider
+        default_position: For periods, return 'start', 'end', or 'middle'
+
+    Returns:
+        A single date or None if parsing fails
+
+    Examples:
+        parse_single_date("2024-10-23")           # 2024-10-23
+        parse_single_date("2024-10-23+5")         # 2024-10-28
+        parse_single_date("2024-Q1")              # 2024-01-01 (start)
+        parse_single_date("2024-Q1", default_position="end")  # 2024-03-31
+        parse_single_date("today-7")              # 7 days ago
+        parse_single_date("year+6months")         # 6 months from start of year
+    """
+    if not string or not string.strip():
+        return None
+
+    original_string = string.strip()
+    string = original_string.lower()
+    
+    # Handle relative dates first
+    today = local_today()
+    if string == "today":
+        return today
+    elif string == "yesterday":
+        return today - timedelta(days=1)
+    elif string == "tomorrow":
+        return today + timedelta(days=1)
+    
+    # Handle position modifiers
+    position = default_position
+    if string.startswith(("start of ", "beginning of ")):
+        position = "start"
+        string = string.split(" of ", 1)[1]
+    elif string.startswith(("end of ", "last day of ")):
+        position = "end"
+        string = string.split(" of ", 1)[1]
+    elif string.startswith(("middle of ", "mid ")):
+        position = "middle"
+        string = string.split(" of " if " of " in string else " ", 1)[1]
+
+    # Parse arithmetic operations
+    # string = substitute(string, fye).lower()
+    arithmetic_parts = _parse_arithmetic(string)
+    base_string = arithmetic_parts["base"]
+    operations = arithmetic_parts["operations"]
+
+    # Get base date using original parse_date logic
+    base_date = _parse_base_date(base_string, fye, position)
+    if base_date is None:
+        base_date = local_today()
+
+    # Apply arithmetic operations
+    result_date = base_date
+    for operation in operations:
+        result_date = _apply_operation(result_date, operation)
+        if result_date is None:
+            return None
+
+    return result_date
+
+
+def _parse_arithmetic(string: str) -> dict:
+    """Parse arithmetic operations from a date string.
+    
+    Returns:
+        Dict with 'base' string and list of 'operations'
+    """
+    # Split on spaces first to handle cases like "2024-12-31 + 5 days"
+    # Then look for arithmetic at the end of the string
+    
+    # Pattern to match arithmetic operations at the end or after complete date patterns
+    # Handles `2024-02+03` but not `2024-03-3` because `2024-03-03` is a valid date
+    arithmetic_re = re.compile(
+        # r'(?<!\d{4})(?<!\d{4}-\d{2})([+-])\s*(\d+)\s*(?:(d|days?|w|weeks?|m|months?|y|years?|q|quarters?))?(?:\s|$)'
+        r'((?<!\d{4})(?<!\d{4}-\d{2})-|\+)\s*(\d+)\s*(?:(d|days?|w|weeks?|m|months?|y|years?|q|quarters?))?(?:\s|$)'
+    )
+    
+    operations = []
+    base_string = string
+    
+    # Find all potential arithmetic operations
+    matches = list(arithmetic_re.finditer(string))
+    
+    for match in matches:
+        start_pos = match.start()
+        before_part = string[:start_pos].strip()
+        
+        # Only consider this an arithmetic operation if:
+        # 1. It comes after a complete date pattern, OR
+        # 2. It comes after a word (like "today", "year"), OR  
+        # 3. It's at a word boundary (not in middle of date)
+        
+        is_arithmetic = False
+        
+        # Check if preceded by complete date patterns
+        if (re.search(r'\d{4}-\d{2}-\d{2}$', before_part) or          # 2024-12-31
+            re.search(r'\d{4}-\d{2}$', before_part) or               # 2024-12
+            re.search(r'\d{4}$', before_part) or                     # 2024
+            re.search(r'\d{4}-q[1-4]$', before_part) or              # 2024-q1
+            re.search(r'\d{4}-w\d{2}$', before_part) or              # 2024-w01
+            re.search(r'fy\d{4}$', before_part) or                   # fy2024
+            re.search(r'fy\d{4}-q[1-4]$', before_part) or            # fy2024-q1
+            re.search(r'(today|yesterday|tomorrow|year|month|week|day|quarter|fiscal_year|fiscal_quarter)$', before_part) or
+            re.search(r'[+-]\d+[dwmyq]?(?:ays?|eeks?|onths?|ears?|uarters?)?$', before_part)):
+            is_arithmetic = True
+        
+        # Also check it's not in the middle of a date (e.g., 2024-12-31 not 2024-1-31)
+        if is_arithmetic:
+            sign = match.group(1)
+            amount = int(match.group(2))
+            unit = match.group(3) or "days"
+            
+            # Normalize unit
+            unit = unit.rstrip('s')
+            # Map abbreviated units to full names
+            unit_mapping = {
+                'd': 'day',
+                'w': 'week',
+                'm': 'month',
+                'y': 'year',
+                'q': 'quarter'
+            }
+            unit = unit_mapping.get(unit, unit)
+
+            operations.append({
+                'sign': sign,
+                'amount': amount,
+                'unit': unit
+            })
+            
+            # Update base string to exclude this operation
+            if not base_string or start_pos < len(base_string):
+                base_string = before_part
+    
+    return {
+        'base': base_string.strip(),
+        'operations': operations
+    }
+
+
+def _parse_base_date(
+    string: str, 
+    fye: FiscalYearEnd | None, 
+    position: str
+) -> datetime.date | None:
+    """Parse the base date part using enhanced logic."""
+    
+    # Try original parse_date first to get date range
+    start_date, end_date = parse_date(string, fye)
+    
+    if start_date is None:
+        return None
+    
+    # Convert range to single date based on position
+    if position == "start":
+        return start_date
+    elif position == "end":
+        # end_date is exclusive, so subtract one day for inclusive end
+        return end_date - timedelta(days=1) if end_date else start_date
+    elif position == "middle":
+        if end_date:
+            days_diff = (end_date - start_date).days
+            return start_date + timedelta(days=days_diff // 2)
+        return start_date
+    else:
+        return start_date
+
+
+def _apply_operation(date: datetime.date, operation: dict) -> datetime.date | None:
+    """Apply a single arithmetic operation to a date."""
+    try:
+        sign = operation['sign']
+        amount = operation['amount']
+        unit = operation['unit']
+        
+        if sign == '-':
+            amount = -amount
+        
+        if unit == 'day':
+            return date + timedelta(days=amount)
+        elif unit == 'week':
+            return date + timedelta(weeks=amount)
+        elif unit == 'month':
+            return month_offset(date, amount)
+        elif unit == 'year':
+            return date.replace(year=date.year + amount)
+        elif unit == 'quarter':
+            return month_offset(date, amount * 3)
+        else:
+            return None
+            
+    except (ValueError, OverflowError):
+        return None
+
+
+# Additional utility functions for enhanced functionality
+
+def smart_parse_date(
+    string: str,
+    context_date: datetime.date | None = None,
+    fye: FiscalYearEnd | None = None,
+) -> datetime.date | None:
+    """Smart date parser with context awareness and fuzzy matching.
+    
+    Args:
+        string: Date string to parse
+        context_date: Reference date for relative parsing
+        fye: Fiscal year end
+        
+    Returns:
+        Parsed date or None
+    """
+    if context_date is None:
+        context_date = local_today()
+    
+    string = string.strip().lower()
+    
+    # Handle natural language patterns
+    natural_patterns = {
+        'last week': context_date - timedelta(weeks=1),
+        'next week': context_date + timedelta(weeks=1),
+        'last month': month_offset(context_date, -1),
+        'next month': month_offset(context_date, 1),
+        'last year': context_date.replace(year=context_date.year - 1),
+        'next year': context_date.replace(year=context_date.year + 1),
+    }
+    
+    if string in natural_patterns:
+        return natural_patterns[string]
+    
+    # Handle "N days/weeks/months ago/from now"
+    relative_re = re.compile(
+        r'(\d+)\s*(d|days?|w|weeks?|m|months?|y|years?)\s+(ago|from\s+now)'
+    )
+    match = relative_re.match(string)
+    if match:
+        amount = int(match.group(1))
+        unit = match.group(2).rstrip('s')
+        direction = match.group(3)
+        
+        if direction == 'ago':
+            amount = -amount
+            
+        # Map abbreviated units to full names
+        unit_mapping = {
+            'd': 'day',
+            'w': 'week', 
+            'm': 'month',
+            'y': 'year'
+        }
+        unit = unit_mapping.get(unit, unit)
+            
+        if unit == 'day':
+            return context_date + timedelta(days=amount)
+        elif unit == 'week':
+            return context_date + timedelta(weeks=amount)
+        elif unit == 'month':
+            return month_offset(context_date, amount)
+        elif unit == 'year':
+            return context_date.replace(year=context_date.year + amount)
+    
+    # Fall back to regular parsing
+    return parse_single_date(string, fye)
+ 
