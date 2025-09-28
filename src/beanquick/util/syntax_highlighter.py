@@ -8,9 +8,9 @@ from typing import List, Any, Optional
 import logging
 
 from toga.colors import Color, rgb
-from toga_cocoa.colors import native_color
 
 if sys.platform == "darwin":
+    from toga_cocoa.colors import native_color
     from toga_cocoa.libs import (
         NSColor, NSFont, NSRange,
         NSForegroundColorAttributeName, NSFontAttributeName
